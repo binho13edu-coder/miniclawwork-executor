@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+requests
+python-dotenv
+google-generativeai
+youtube-transcript-api
+duckduckgo-search
+httpx
+psutil
+tenacity
