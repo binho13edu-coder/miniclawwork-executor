@@ -1,0 +1,14 @@
+[
+  {
+    "query": "print('memory test')",
+    "result": "memory test\n",
+    "status": "error",
+    "timestamp": "2026-04-22T21:09:39.495Z"
+  },
+  {
+    "query": "print('memory test 2')",
+    "result": "memory test 2\n",
+    "status": "success",
+    "timestamp": "2026-04-22T21:13:55.510Z"
+  }
+]
