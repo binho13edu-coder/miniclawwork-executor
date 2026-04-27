@@ -1,0 +1,36 @@
+name: Code Executor
+
+on:
+  repository_dispatch:
+    types: [run-python]
+
+run-name: ${{ github.event.client_payload.task_id }}
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install deps
+        run: pip install requests httpx aiohttp
+
+      - name: Decode and run code
+        run: |
+          echo "${{ github.event.client_payload.code }}" | base64 -d > script.py
+          # Captura tanto a saída normal quanto erros no mesmo arquivo
+          python script.py > output.txt 2>&1 || true
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: result-${{ github.event.client_payload.task_id }}
+          path: output.txt
+          retention-days: 1
