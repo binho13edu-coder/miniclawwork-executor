@@ -3,25 +3,25 @@ on:
   repository_dispatch:
     types: [run-python]
 run-name: ${{ github.event.client_payload.task_id }}
+
 jobs:
   execute:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Install deps
-        run: pip install requests httpx aiohttp
-      - name: Run
+
+      - name: Run Code
         run: |
           echo "${{ github.event.client_payload.code }}" | base64 -d > script.py
-          # Garante que output.txt exista mesmo que o script esteja vazio
-          touch output.txt
           python script.py > output.txt 2>&1 || true
+
       - name: Upload
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: result-${{ github.event.client_payload.task_id }}

@@ -1,14 +1,204 @@
 [
   {
-    "query": "print('memory test')",
-    "result": "memory test\n",
-    "status": "error",
-    "timestamp": "2026-04-22T21:09:39.495Z"
+    "timestamp": "2026-04-24T00:35:51.097Z",
+    "query": "Olá, você está funcionando?",
+    "type": "llm",
+    "success": false,
+    "summary": "{\"error\":{\"message\":\"User not found.\",\"code\":401}}",
+    "raw": {
+      "query": "Olá, você está funcionando?",
+      "result": "{\"error\":{\"message\":\"User not found.\",\"code\":401}}",
+      "status": "llm",
+      "timestamp": "2026-04-24T00:35:51.097Z"
+    }
   },
   {
-    "query": "print('memory test 2')",
-    "result": "memory test 2\n",
+    "timestamp": "2026-04-24T01:14:26.339Z",
+    "query": "Olá, você está funcionando?",
+    "type": "llm",
+    "success": false,
+    "summary": "{\"error\":{\"message\":\"User not found.\",\"code\":401}}",
+    "raw": {
+      "query": "Olá, você está funcionando?",
+      "result": "{\"error\":{\"message\":\"User not found.\",\"code\":401}}",
+      "status": "llm",
+      "timestamp": "2026-04-24T01:14:26.339Z"
+    }
+  },
+  {
+    "timestamp": "2026-04-24T01:19:03.162Z",
+    "query": "Olá, você está funcionando?",
+    "type": "llm",
+    "success": false,
+    "summary": "{\"error\":{\"message\":\"No endpoints found for mistralai/mistral-7b-instruct.\",\"code\":404},\"user_id\":\"u",
+    "raw": {
+      "query": "Olá, você está funcionando?",
+      "result": "{\"error\":{\"message\":\"No endpoints found for mistralai/mistral-7b-instruct.\",\"code\":404},\"user_id\":\"user_3ADYl02xtCQspHGBUag5u9SgFF3\"}",
+      "status": "llm",
+      "timestamp": "2026-04-24T01:19:03.162Z"
+    }
+  },
+  {
+    "timestamp": "2026-04-24T01:20:12.039Z",
+    "query": "Olá",
+    "type": "llm",
+    "success": false,
+    "summary": "{\"error\":{\"message\":\"No endpoints found for mistralai/mistral-small-3.1-24b-instruct:free.\",\"code\":4",
+    "raw": {
+      "query": "Olá",
+      "result": "{\"error\":{\"message\":\"No endpoints found for mistralai/mistral-small-3.1-24b-instruct:free.\",\"code\":404},\"user_id\":\"user_3ADYl02xtCQspHGBUag5u9SgFF3\"}",
+      "status": "llm",
+      "timestamp": "2026-04-24T01:20:12.039Z"
+    }
+  },
+  {
+    "timestamp": "2026-04-24T01:21:42.101Z",
+    "query": "Olá",
+    "type": "llm",
+    "success": false,
+    "summary": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b",
+    "raw": {
+      "query": "Olá",
+      "result": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to ac",
+      "status": "llm",
+      "timestamp": "2026-04-24T01:21:42.101Z"
+    }
+  },
+  {
+    "timestamp": "2026-04-24T01:22:58.663Z",
+    "query": "Olá",
+    "type": "llm",
+    "success": false,
+    "summary": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"google/gemma-3-27b-it:fr",
+    "raw": {
+      "query": "Olá",
+      "result": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"google/gemma-3-27b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate you",
+      "status": "llm",
+      "timestamp": "2026-04-24T01:22:58.663Z"
+    }
+  },
+  {
+    "timestamp": "2026-04-24T01:26:30.832Z",
+    "query": "Olá",
+    "type": "llm",
+    "success": false,
+    "summary": "{\"error\":{\"message\":\"No endpoints found for deepseek/deepseek-chat-v3-0324:free.\",\"code\":404},\"user_",
+    "raw": {
+      "query": "Olá",
+      "result": "{\"error\":{\"message\":\"No endpoints found for deepseek/deepseek-chat-v3-0324:free.\",\"code\":404},\"user_id\":\"user_3ADYl02xtCQspHGBUag5u9SgFF3\"}",
+      "status": "llm",
+      "timestamp": "2026-04-24T01:26:30.832Z"
+    }
+  },
+  {
+    "timestamp": "2026-04-24T01:28:42.732Z",
+    "query": "Olá",
+    "type": "llm",
+    "success": false,
+    "summary": "{\"error\":{\"message\":\"No endpoints found for deepseek/deepseek-r1-distill-llama-70b:free.\",\"code\":404",
+    "raw": {
+      "query": "Olá",
+      "result": "{\"error\":{\"message\":\"No endpoints found for deepseek/deepseek-r1-distill-llama-70b:free.\",\"code\":404},\"user_id\":\"user_3ADYl02xtCQspHGBUag5u9SgFF3\"}",
+      "status": "llm",
+      "timestamp": "2026-04-24T01:28:42.732Z"
+    }
+  },
+  {
+    "timestamp": "2026-04-24T13:53:14.967Z",
+    "query": "Olá",
+    "type": "llm",
+    "success": false,
+    "summary": "{\"error\":{\"message\":\"Invalid API Key\",\"type\":\"invalid_request_error\",\"code\":\"invalid_api_key\"}}",
+    "raw": {
+      "query": "Olá",
+      "result": "{\"error\":{\"message\":\"Invalid API Key\",\"type\":\"invalid_request_error\",\"code\":\"invalid_api_key\"}}",
+      "status": "llm",
+      "timestamp": "2026-04-24T13:53:14.967Z"
+    }
+  },
+  {
+    "timestamp": "2026-04-24T14:15:04.443Z",
+    "query": "print('teste')",
+    "type": "llm",
+    "success": true,
+    "summary": "teste\n",
+    "raw": {
+      "query": "print('teste')",
+      "result": "teste\n",
+      "status": "success",
+      "timestamp": "2026-04-24T14:15:04.443Z"
+    }
+  },
+  {
+    "query": "print('teste planner')",
+    "result": "teste planner\n",
     "status": "success",
-    "timestamp": "2026-04-22T21:13:55.510Z"
+    "timestamp": "2026-04-24T14:26:06.832Z"
+  },
+  {
+    "query": "print('teste planner')",
+    "result": "teste planner\n",
+    "status": "success",
+    "timestamp": "2026-04-24T14:28:52.289Z"
+  },
+  {
+    "query": "print(\"teste\")",
+    "result": "Bad credentials - https://docs.github.com/rest",
+    "status": "error",
+    "timestamp": "2026-04-27T03:10:19.817Z"
+  },
+  {
+    "query": "print(\"teste apos restart\")",
+    "result": "Bad credentials - https://docs.github.com/rest",
+    "status": "error",
+    "timestamp": "2026-04-27T03:12:43.624Z"
+  },
+  {
+    "query": "print(\"teste github\")",
+    "result": "teste github\n",
+    "status": "success",
+    "timestamp": "2026-04-27T12:47:35.130Z"
+  },
+  {
+    "query": "print(\"teste\")",
+    "result": "teste\n",
+    "status": "success",
+    "timestamp": "2026-04-27T12:47:50.594Z"
+  },
+  {
+    "query": "print(\"fim do sufoco\")",
+    "result": "fim do sufoco\n",
+    "status": "success",
+    "timestamp": "2026-04-27T12:48:06.222Z"
+  },
+  {
+    "query": "print(\"teste\")",
+    "result": "teste\n",
+    "status": "success",
+    "timestamp": "2026-04-27T12:48:21.713Z"
+  },
+  {
+    "query": "print(\"teste\")",
+    "result": "teste\n",
+    "status": "success",
+    "timestamp": "2026-04-27T12:48:37.417Z"
+  },
+  {
+    "query": "print(\"teste\")",
+    "result": "teste\n",
+    "status": "success",
+    "timestamp": "2026-04-27T13:01:03.641Z"
+  },
+  {
+    "query": "import requests; print(requests.get(\"https://httpbin.org/get\").status_code)",
+    "result": "⏱️ Timeout esperando resultado",
+    "status": "error",
+    "timestamp": "2026-04-27T13:06:08.551Z"
+  },
+  {
+    "query": "import requests; print(requests.get(\"https://httpbin.org/get\").status_code)",
+    "result": "⏱️ Timeout esperando resultado",
+    "status": "error",
+    "timestamp": "2026-04-27T13:23:53.096Z"
   }
 ]
