@@ -17,8 +17,11 @@ jobs:
       - name: Run
         run: |
           echo "${{ github.event.client_payload.code }}" | base64 -d > script.py
+          # Garante que output.txt exista mesmo que o script esteja vazio
+          touch output.txt
           python script.py > output.txt 2>&1 || true
       - name: Upload
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: result-${{ github.event.client_payload.task_id }}
