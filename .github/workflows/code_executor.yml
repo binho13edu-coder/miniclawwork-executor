@@ -1,19 +1,21 @@
 name: Code Executor
-
 run-name: ${{ github.event.client_payload.task_id }}
-
 on:
   repository_dispatch:
     types: [run-python]
-
 jobs:
   execute:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Decode and run
         env:
           CODE_B64: ${{ github.event.client_payload.code }}
