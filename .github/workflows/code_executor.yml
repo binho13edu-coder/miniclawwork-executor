@@ -13,7 +13,7 @@ jobs:
         with: {python-version: '3.12'}
       - run: |
           echo "$CODE_INPUT" > script.py
-          pip install requests duckduckko_search ddgs
+          pip install requests duckduckgo_search ddgs
           python script.py > output.txt 2>&1 || echo "ERRO_NO_SCRIPT" >> output.txt
         env: {CODE_INPUT: "${{ github.event.inputs.code }}"}
       - uses: actions/upload-artifact@v4
