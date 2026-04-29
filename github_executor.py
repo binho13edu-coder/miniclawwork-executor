@@ -90,3 +90,13 @@ def execute_task(query: str, llm_generate) -> str:
     if result.startswith("⏱️"):
         return result
     return f"✅ Resultado:\n{result}"
+
+def execute_task_raw(code: str) -> str:
+    import uuid
+    from github_executor import trigger_github_action, wait_for_result
+    task_id = str(uuid.uuid4())
+    trigger_github_action(code, task_id)
+    result = wait_for_result(task_id)
+    if result.startswith("⏱️"):
+        return result
+    return f"✅ Resultado:\n{result}"

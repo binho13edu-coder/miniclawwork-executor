@@ -8,7 +8,7 @@ on:
 jobs:
   execute:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 5
     steps:
       - name: Setup Python
         uses: actions/setup-python@v5

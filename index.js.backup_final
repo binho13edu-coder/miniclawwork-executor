@@ -1,0 +1,45 @@
+const { Telegraf } = require('telegraf');
+const axios = require('axios');
+
+// Configuração injetada diretamente
+const config = {
+    token: "8735672138:AAGy9RNjCp01W5yF1hApKpOWDJo60WXaoVM",
+    openrouter: process.env.OPENROUTER_API_KEY || "SUA_CHAVE_OPENROUTER",
+    groq: process.env.GROQ_API_KEY || "SUA_CHAVE_GROQ",
+    admin: parseInt(process.env.OWNER_ID) || 0
+};
+
+const bot = new Telegraf(config.token);
+
+async function triggerAndWait(code) {
+    // Lógica do executor via GitHub Actions
+    return "Execução via GitHub Actions ainda em implementação.";
+}
+
+async function generate(prompt) {
+    return "Resposta da LLM (Fallback).";
+}
+
+bot.command("exec", async (ctx) => {
+  if (ctx.from.id !== config.admin && config.admin !== 0) return;
+  const code = ctx.message.text.replace("/exec", "").trim();
+  if (!code) return ctx.reply("Uso: /exec <código>");
+  await ctx.reply("🚀 Enviando para GitHub Actions...");
+  try {
+    const result = await triggerAndWait(code);
+    await ctx.reply("✅ Resultado:\n" + result);
+  } catch (e) {
+    await ctx.reply("❌ Erro: " + e.message);
+  }
+});
+
+bot.on('text', async (ctx) => {
+    if (ctx.message.text.startsWith('/')) return;
+    const wait = await ctx.reply("💬...");
+    const reply = await generate(ctx.message.text);
+    await ctx.telegram.editMessageText(ctx.chat.id, wait.message_id, null, reply);
+});
+
+bot.launch().then(() => console.log("🚀 MiniClawwork v1.2 Online (Token Hardcoded)"));
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
