@@ -6,3 +6,5 @@ memory.json
 .env
 ecosystem.config.js
 node_modules/
+.env
+*.backup*
