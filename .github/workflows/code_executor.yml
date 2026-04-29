@@ -1,25 +1,30 @@
 name: Code Executor
 run-name: ${{ github.event.client_payload.task_id }}
+
 on:
   repository_dispatch:
     types: [run-python]
+
 jobs:
   execute:
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Install dependencies
-        run: |
-          pip install requests
+        run: pip install requests
+
       - name: Decode and run
         env:
           CODE_B64: ${{ github.event.client_payload.code }}
         run: |
           echo "$CODE_B64" | base64 -d > script.py
-          timeout 120s python3 script.py > output.txt 2>&1
+          timeout 30 python script.py > output.txt 2>&1
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
