@@ -15,7 +15,7 @@ jobs:
           python-version: '3.12'
       - name: Prepare and run
         env:
-          CODE_INPUT: ${{ github.event.inputs.code }}
+          CODE_INPUT: "${{ github.event.inputs.code }}"
         run: |
           echo "$CODE_INPUT" > script.py
           pip install requests duckduckgo-search
