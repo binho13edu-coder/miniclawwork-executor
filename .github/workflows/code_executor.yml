@@ -15,14 +15,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
-        run: pip install requests
-
-      - name: Decode and run
+      - name: Decode, install requests and run
         env:
           CODE_B64: ${{ github.event.client_payload.code }}
         run: |
           echo "$CODE_B64" | base64 -d > script.py
+          pip install requests
           timeout 30 python script.py > output.txt 2>&1
 
       - name: Upload artifact
