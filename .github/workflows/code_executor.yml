@@ -23,7 +23,9 @@ jobs:
         run: |
           echo "$CODE_INPUT" > script.py
           pip install requests
-          python script.py > output.txt 2>&1
+          # Cria o arquivo vazio antes de rodar, garante que sempre exista
+          touch output.txt
+          python script.py > output.txt 2>&1 || echo "Erro na execucao" >> output.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
