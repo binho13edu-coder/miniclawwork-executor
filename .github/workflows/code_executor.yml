@@ -1,21 +1,33 @@
 name: Code Executor
+
 on:
   workflow_dispatch:
     inputs:
       code:
         description: 'Code to execute'
         required: true
+
 jobs:
   execute:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
-      - run: |
-          pip install requests
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Prepare and run
+        env:
+          CODE_INPUT: ${{ github.event.inputs.code }}
+        run: |
           echo "$CODE_INPUT" > script.py
-          # Adicionamos tratamento de erro para capturar o log mesmo se o script falhar
+          pip install requests duckduckgo-search
           python script.py > output.txt 2>&1 || echo "ERRO_NO_SCRIPT" >> output.txt
-        env: {CODE_INPUT: "${{ github.event.inputs.code }}"}
-      - uses: actions/upload-artifact@v4
-        with: {name: output-result, path: output.txt}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: output-result
+          path: output.txt
+          retention-days: 1
