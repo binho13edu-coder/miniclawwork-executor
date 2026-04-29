@@ -10,7 +10,6 @@ on:
 jobs:
   execute:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -22,9 +21,7 @@ jobs:
           CODE_INPUT: ${{ github.event.inputs.code }}
         run: |
           echo "$CODE_INPUT" > script.py
-          # Instalando a versão recomendada
-          pip install requests ddgs 
-          # Executamos e filtramos avisos de sistema para o output ficar limpo
+          pip install requests duckduckgo-search
           python script.py > output.txt 2>&1 || echo "ERRO_NO_SCRIPT" >> output.txt
 
       - name: Upload artifact
