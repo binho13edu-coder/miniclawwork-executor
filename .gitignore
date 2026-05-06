@@ -5,3 +5,4 @@ bot_state.json
 res.zip
 *.bak
 *.corrompido
+.aider*
