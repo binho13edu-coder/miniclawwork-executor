@@ -1,10 +1,7 @@
-venv/
-__pycache__/
-*.pyc
+node_modules
 .env
 memory.json
-.env
-ecosystem.config.js
-node_modules/
-.env
-*.backup*
+bot_state.json
+res.zip
+*.bak
+*.corrompido

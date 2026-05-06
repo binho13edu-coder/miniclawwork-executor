@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@octokit/rest": "^22.0.1",
+    "@sentry/node": "^10.51.0",
     "adm-zip": "^0.5.17",
     "async": "^3.2.6",
     "axios": "^1.15.2",
