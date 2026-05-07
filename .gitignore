@@ -6,3 +6,4 @@ res.zip
 *.bak
 *.corrompido
 .aider*
+ecosystem.config.js

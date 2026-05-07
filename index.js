@@ -98,9 +98,9 @@ const runLeads = (ctx, q) => {
     state.selectedLead = null;
     const py = `
 import requests, re, json, urllib.parse, warnings
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 warnings.filterwarnings("ignore")
-bl=['tripadvisor','facebook','instagram','linkedin','youtube','wikipedia','yelp','guiamais','telelistas','restaurantguru','glassdoor','gastroranking','doctoralia','boaconsulta','catalogo','guia','lista','melhores','top10','ranking','cronoshare','peritoanimal','encontra','hospitaleclinicas','clinicasbrasilia','rededorsaoluiz']
+bl=['tripadvisor','facebook','instagram','linkedin','youtube','wikipedia','yelp','guiamais','telelistas','restaurantguru','glassdoor','gastroranking','doctoralia','boaconsulta','cronoshare','peritoanimal','encontra','hospitaleclinicas','clinicasbrasilia','rededorsaoluiz']
 ebl=['contact@','info@linktomedia','nesx.co','example','test','sentry','wixpress','google','bing','images','png','jpg']
 def is_fake(p):
     c = re.sub(r'\\D','',p)
@@ -109,7 +109,7 @@ leads, seen = [], set()
 ddd = "61" if "brasília" in "${q}".lower() else None
 print("DEBUG: iniciando DDGS")
 with DDGS() as ddgs:
-    results = list(ddgs.text("${q}", max_results=30))
+    results = list(ddgs.text("${q} contato telefone email site oficial", max_results=40))
 print(f"DEBUG: resultados DDGS={len(results)}")
 for r in results:
     u = r['href'].lower()
