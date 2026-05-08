@@ -100,16 +100,19 @@ const runLeads = (ctx, q) => {
 import requests, re, json, urllib.parse, warnings
 from ddgs import DDGS
 warnings.filterwarnings("ignore")
-bl=['tripadvisor','facebook','instagram','linkedin','youtube','wikipedia','yelp','guiamais','telelistas','restaurantguru','glassdoor','gastroranking','doctoralia','boaconsulta','cronoshare','peritoanimal','encontra','hospitaleclinicas','clinicasbrasilia','rededorsaoluiz']
+bl=['tripadvisor','facebook','instagram','linkedin','youtube','wikipedia','yelp','guiamais','telelistas','restaurantguru','glassdoor','gastroranking','doctoralia','boaconsulta','cronoshare','peritoanimal','encontra','hospitaleclinicas','clinicasbrasilia','rededorsaoluiz','guiatelefone','guiacidade','mecanicos.net','infoisinfo','applocal','listamais','99freelas','getninjas','habitissimo','apontador','foursquare','yelp','nicelocal','guiafacil','catalogo.med','empresafone','paginaamarela','dentistas.net','catalogo','twinkle','google.com/maps','maps.google','trabalhabrasil','salario.com','empregare','buscja','avaliamed','exiap','kdminhaoficina']
 ebl=['contact@','info@linktomedia','nesx.co','example','test','sentry','wixpress','google','bing','images','png','jpg']
 def is_fake(p):
     c = re.sub(r'\\D','',p)
-    return len(c)<10 or len(c)>11 or any(x in c for x in ['123456','000000','111111','333333'])
+    if len(c)<10 or len(c)>11: return True
+    ddd=int(c[1:3]) if c[0]=='0' else int(c[:2])
+    valid={11,12,13,14,15,16,17,18,19,21,22,24,27,28,31,32,33,34,35,37,38,41,42,43,44,45,46,47,48,49,51,53,54,55,61,62,63,64,65,66,67,68,69,71,73,74,75,77,79,81,82,83,84,85,86,87,88,89,91,92,93,94,95,96,97,98,99}
+    return ddd not in valid or any(x in c for x in ['123456','000000','111111','222222','333333','444444','555555','666666','777777','888888','999999'])
 leads, seen = [], set()
 ddd = "61" if "brasília" in "${q}".lower() else None
 print("DEBUG: iniciando DDGS")
 with DDGS() as ddgs:
-    results = list(ddgs.text("${q} contato telefone email site oficial", max_results=40))
+    results = list(ddgs.text("${q} contato telefone site oficial", max_results=50))
 print(f"DEBUG: resultados DDGS={len(results)}")
 for r in results:
     u = r['href'].lower()
@@ -117,6 +120,11 @@ for r in results:
     print(f"DEBUG: analisando={r['href']}")
     if any(b in u for b in bl) or dom in seen: 
         print(f"DEBUG: bloqueado por blacklist ou duplicado")
+        continue
+    q_words = [w for w in "${q}".lower().split() if len(w)>3]
+    title_lower = r['title'].lower()
+    if not any(w in title_lower or w in u for w in q_words):
+        print(f"DEBUG: bloqueado por relevancia")
         continue
     try:
         print("DEBUG: request start")
