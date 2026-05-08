@@ -1,0 +1,169 @@
+const { Telegraf } = require('telegraf');
+const { Octokit } = require('@octokit/rest');
+const AdmZip = require('adm-zip');
+const axios = require('axios');
+const fs = require('fs');
+
+const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
+const GROQ_KEY = process.env.GROQ_API_KEY;
+const NVIDIA_KEY = "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";
+
+// --- 1. ESTADO ESTRUTURADO ---
+let state = {
+  leads: [],
+  selectedLead: null,
+  lastResult: "Nenhum dado.",
+};
+
+// --- 2. HELPERS ---
+const match = (text, triggers) => triggers.some(t => text.toLowerCase().includes(t));
+
+function isValidLead(lead) {
+  if (!lead || !lead.url) return false;
+  const url = lead.url.toLowerCase();
+  const blacklist = [
+    "lista", "melhores", "top", "guia", "catalogo",
+    "doctoralia", "boaconsulta", "econodata", "jusbrasil",
+    "getninjas", "facebook", "instagram", "linkedin"
+  ];
+  return !blacklist.some(b => url.includes(b));
+}
+
+async function callLLM(messages, system = "Você é o MiniClawwork, técnico e direto.") {
+  try {
+    const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama-3.1-8b-instant',
+      messages: [{ role: 'system', content: system }, ...messages]
+    }, { headers: { 'Authorization': `Bearer ${GROQ_KEY}` }, timeout: 8000 });
+    return res.data.choices[0].message.content.trim();
+  } catch (e) {
+    return "⚠️ Erro na LLM: " + e.message;
+  }
+}
+
+// --- 3. MOTOR DE EXECUÇÃO ---
+async function triggerAndWait(ctx, code, statusText = "⏳ Processando...") {
+  try {
+    const msg = await ctx.reply(statusText);
+    await octokit.rest.actions.createWorkflowDispatch({
+      owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME,
+      workflow_id: 'code_executor.yml', ref: 'main', inputs: { code: code }
+    });
+    await new Promise(r => setTimeout(r, 12000));
+    let runId;
+    for(let i=0; i<15; i++) {
+      const runs = await octokit.rest.actions.listWorkflowRuns({ 
+        owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, 
+        workflow_id: 'code_executor.yml', per_page: 1 
+      });
+      if (runs.data.workflow_runs[0]) {
+        runId = runs.data.workflow_runs[0].id;
+        if (runs.data.workflow_runs[0].status === 'completed') break;
+      }
+      await new Promise(r => setTimeout(r, 4000));
+    }
+    const artifacts = await octokit.rest.actions.listWorkflowRunArtifacts({ 
+      owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, run_id: runId 
+    });
+    if (artifacts.data.artifacts.length > 0) {
+      const download = await octokit.rest.actions.downloadArtifact({ 
+        owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, 
+        artifact_id: artifacts.data.artifacts[0].id, archive_format: 'zip' 
+      });
+      const response = await axios.get(download.url, { responseType: 'arraybuffer' });
+      fs.writeFileSync('result.zip', Buffer.from(response.data));
+      const zip = new AdmZip('result.zip');
+      const output = zip.readAsText('output.txt');
+      
+      // Parsing de leads
+      if (output.includes('🏢')) {
+        state.leads = [];
+        output.split('----------').forEach(block => {
+          const nameMatch = block.match(/🏢\s*(.*)/);
+          const urlMatch = block.match(/🔗\s*(.*)/);
+          if (nameMatch && urlMatch) {
+            const lead = { name: nameMatch[1].trim(), url: urlMatch[1].trim() };
+            if (isValidLead(lead)) state.leads.push(lead);
+          }
+        });
+      }
+      state.lastResult = output.trim();
+      ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, "✅ Resultado:\n\n" + output.substring(0, 3500));
+      if (fs.existsSync('result.zip')) fs.unlinkSync('result.zip');
+    } else {
+      ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, "❌ O processo terminou sem gerar artefatos.");
+    }
+  } catch (e) { 
+    ctx.reply("❌ Erro Controlado: " + e.message); 
+  }
+}
+
+// --- 4. ROTEADOR PRINCIPAL ---
+bot.on('text', async (ctx) => {
+  try {
+    const text = ctx.message.text.trim();
+    const lower = text.toLowerCase();
+
+    if (lower === "status") {
+      return ctx.reply(`🤖 **MiniClawwork v3.5 (Anti-Crash)**\n\n• Leads Qualificados: ${state.leads.length}\n• Selecionado: ${state.selectedLead ? state.selectedLead.name : "Nenhum"}\n• Último Resultado: ${state.lastResult.substring(0, 20)}...`);
+    }
+
+    // 1. SCANNER (buscar leads)
+    if (match(lower, ["buscar", "leads", "empresas"])) {
+      const q = lower.replace(/buscar|leads|empresas/g, "").trim();
+      if (!q) return ctx.reply("❓ O que devo buscar?");
+      const code = `from ddgs import DDGS
+blacklist = ['lista','melhores','top','guia','catalogo','doctoralia','boaconsulta','econodata','jusbrasil','getninjas','facebook','instagram','linkedin']
+with DDGS() as ddgs:
+    for r in list(ddgs.text("${q}", region='br-pt', max_results=20)):
+        url = r['href'].lower()
+        if any(b in url for b in blacklist): continue
+        print(f"🏢 {r['title']}\\n🔗 {r['href']}\\n----------")`;
+      return triggerAndWait(ctx, code, `🔎 Buscando e filtrando ${q}...`);
+    }
+
+    // 2. ANÁLISE DE LEAD (índice protegido)
+    if (match(lower, ["analise", "analisa"])) {
+      if (state.leads.length === 0) return ctx.reply("⚠️ Lista de leads vazia. Busque primeiro.");
+      let idx = 0;
+      if (lower.includes("segundo")) idx = 1;
+      else if (lower.includes("terceiro")) idx = 2;
+      else {
+        const numMatch = lower.match(/\d+/);
+        if (numMatch) idx = parseInt(numMatch[0]) - 1;
+      }
+      if (idx < 0 || idx >= state.leads.length) {
+        return ctx.reply(`⚠️ Lead #${idx+1} não existe. Temos ${state.leads.length} leads na memória.`);
+      }
+      const target = state.leads[idx];
+      state.selectedLead = target;
+      const code = `import requests
+headers = {'User-Agent': 'Mozilla/5.0'}
+try:
+    r = requests.get("${target.url}", timeout=15, headers=headers)
+    print(f"--- ANÁLISE: ${target.name} ---\\nStatus: {r.status_code}\\nWhatsApp: {'Sim' if 'whatsapp' in r.text.lower() else 'Não'}")
+except Exception as e:
+    print(f"❌ Erro ao acessar site: {str(e)}")`;
+      return triggerAndWait(ctx, code, `🔬 Analisando: ${target.name}...`);
+    }
+
+    // 3. SCORE (vale a pena)
+    if (match(lower, ["vale a pena", "score"])) {
+      if (!state.selectedLead) return ctx.reply("⚠️ Selecione e analise um lead primeiro.");
+      const score = await callLLM([{ role: 'user', content: `Lead: ${state.selectedLead.name}. Contexto: ${state.lastResult}` }], "Aja como um SDR Senior. Dê uma nota de 0 a 10 para o lead e justifique.");
+      return ctx.reply(`🔮 **PREVISÃO ESTRATÉGICA:**\n\n${score}`);
+    }
+
+    // 4. FALLBACK (LLM pura)
+    const response = await callLLM([{ role: 'user', content: text }], "Você é o MiniClawwork. Responda de forma técnica e curta.");
+    ctx.reply(response + "\n\n⚡ _v3.5 Anti-Crash_");
+
+  } catch (err) {
+    console.error(err);
+    ctx.reply("❌ Erro no Roteador Global. Sistema protegido.");
+  }
+});
+
+bot.launch();

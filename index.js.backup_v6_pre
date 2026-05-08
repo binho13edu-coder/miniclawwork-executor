@@ -1,0 +1,565 @@
+const { Telegraf } = require('telegraf');
+const { Octokit } = require('@octokit/rest');
+const AdmZip = require('adm-zip');
+const axios = require('axios');
+const fs = require('fs');
+
+const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
+let state = { leads: [], selectedLead: null };
+let conversationHistory = [];
+let alertas = [];
+let alertaIdCounter = 1;
+
+const persona = "MiniClawwork. Objetivo e direto.";
+const MAX_LEADS = 20;
+const MAX_HISTORY_TURNS = 3;
+
+// ─── max_tokens por intenção ─────────────────────────────────────────────────
+const FACTUAL_PATTERNS = [
+ /\bquem\b/,/\bonde\b/,/\bo que é\b/,/\bme fale\b/,/\bconte\b/,
+ /\bhistória\b/,/\bcomo funciona\b/,/\bcolégio\b/,/\bescola\b/,
+ /\buniversidade\b/,/\bempresa\b/,/\bcidade\b/,/\bbairro\b/,
+ /\bo que são\b/,/\bexplique\b/,/\bdescreva\b/
+];
+const MATH_PATTERNS = [
+ /\bcalcul/,/\braiz\b/,/\bsoma\b/,/\bdivid/,
+ /\bmultipl/,/\bporcentagem\b/,/\bjuros\b/
+];
+const detectIntent = (t) => {
+ const tl = t.toLowerCase();
+ if (FACTUAL_PATTERNS.some(p => p.test(tl))) return 'factual';
+ if (MATH_PATTERNS.some(p => p.test(tl))) return 'math';
+ return 'chat';
+};
+const getMaxTokens = (t) => ({ factual: 400, math: 250, chat: 200 }[detectIntent(t)] ?? 250);
+
+// ─── triggerAndWait ──────────────────────────────────────────────────────────
+async function triggerAndWait(ctx, code, statusText, outputPrefix) {
+ try {
+   const msg = await ctx.reply(statusText);
+   await octokit.rest.actions.createWorkflowDispatch({
+     owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME,
+     workflow_id: 'code_executor.yml', ref: 'main', inputs: { code }
+   });
+
+   let runId;
+   for (let i = 0; i < 15; i++) {
+     await new Promise(r => setTimeout(r, 3000));
+     const runs = await octokit.rest.actions.listWorkflowRuns({
+       owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME,
+       workflow_id: 'code_executor.yml', per_page: 1
+     });
+     if (runs.data.workflow_runs[0]) { runId = runs.data.workflow_runs[0].id; break; }
+   }
+   if (!runId) throw new Error("Workflow nao iniciou");
+
+   for (let i = 0; i < 40; i++) {
+     const run = await octokit.rest.actions.getWorkflowRun({
+       owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, run_id: runId
+     });
+     if (run.data.status === 'completed') break;
+     if (i === 39) throw new Error("Timeout >2min");
+     await new Promise(r => setTimeout(r, 3000));
+   }
+
+   const arts = await octokit.rest.actions.listWorkflowRunArtifacts({
+     owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, run_id: runId
+   });
+   if (arts.data.artifacts.length > 0) {
+     const dl = await octokit.rest.actions.downloadArtifact({
+       owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME,
+       artifact_id: arts.data.artifacts[0].id, archive_format: 'zip'
+     });
+     const res = await axios.get(dl.url, { responseType: 'arraybuffer' });
+     fs.writeFileSync('res.zip', Buffer.from(res.data));
+     const out = new AdmZip('res.zip').readAsText('output.txt');
+     console.log("[RAW OUTPUT]", out);
+     try {
+       const jsonMatch = out.match(/\[.*\]/s);
+       const data = JSON.parse(jsonMatch ? jsonMatch[0] : out);
+       if (Array.isArray(data)) {
+         state.leads = data.slice(0, MAX_LEADS).map((l, i) => ({ id: i + 1, ...l }));
+         state.selectedLead = state.leads[0] || null;
+         const txt = state.leads.map(l =>
+           `[${l.id}] ${l.title}\n🔗 ${l.link}\n📧 ${l.email}\n📞 ${l.phone}` +
+           (typeof l.score === 'number' ? `\n⭐ Score: ${l.score}/100` : '')
+         ).join('\n\n');
+         await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null,
+           outputPrefix + (txt || "Zero leads qualificados."));
+       } else {
+         await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, outputPrefix + out);
+       }
+     } catch (e) {
+       console.log("[JSON ERROR]", e.message);
+       await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, outputPrefix + out);
+     }
+     if (fs.existsSync('res.zip')) fs.unlinkSync('res.zip');
+   }
+ } catch (e) {
+   console.error('[triggerAndWait]', e.message);
+   ctx.reply("❌ " + e.message);
+ }
+}
+
+// ─── askLLM ──────────────────────────────────────────────────────────────────
+const askLLM = async (t) => {
+ conversationHistory.push({ role: 'user', content: t });
+ const recent = conversationHistory.slice(-(MAX_HISTORY_TURNS * 2));
+ const msgs = [{ role: 'system', content: persona }, ...recent];
+ const maxTok = getMaxTokens(t);
+
+ const call = async (u, k, m) => {
+   const res = await axios.post(u,
+     { model: m, messages: msgs, temperature: 0.1, max_tokens: maxTok },
+     { headers: { Authorization: `Bearer ${k}` }, timeout: 12000 }
+   );
+   return res.data.choices[0].message.content;
+ };
+
+ const providers = [
+   ['https://openrouter.ai/api/v1/chat/completions',   process.env.OPENROUTER_API_KEY, 'meta-llama/llama-3.1-8b-instruct:free'],
+   ['https://api.groq.com/openai/v1/chat/completions', process.env.GROQ_API_KEY,       'llama-3.1-8b-instant'],
+   ['https://integrate.api.nvidia.com/v1/chat/completions', process.env.NVIDIA_API_KEY,'meta/llama-3.1-8b-instruct'],
+ ];
+
+ for (const [url, key, model] of providers) {
+   try {
+     const ans = await call(url, key, model);
+     conversationHistory.push({ role: 'assistant', content: ans });
+     return ans;
+   } catch (e) {
+     console.log(`[LLM fail: ${model}]`, e.message);
+   }
+ }
+ return "⚠️ Offline.";
+};
+
+// ─── buildLeadScript ─────────────────────────────────────────────────────────
+const buildLeadScript = (q) => {
+ const query = q.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`');
+ return `
+import requests, re, json, urllib.parse, warnings, unicodedata
+from ddgs import DDGS
+warnings.filterwarnings("ignore")
+
+BL_URL = [
+   "google","yahoo","bing","bb.com.br","caixa.gov","gov.br","prefeitura",
+   "atende.net","wikipedia","facebook","instagram","linkedin","twitter","tiktok",
+   "doctoralia","dentistas.net","boaconsulta","guiamais","guia.","guia-",
+   "catalogo","listagem","lista.","ranking","telelistas","tripadvisor","yelp",
+   "glassdoor","gastroranking","restaurantguru","cronoshare","peritoanimal",
+   "youtube","maps.google","yellowpages","hotfrog","chamados","jusbrasil",
+   "oab.org","advivo","migalhas","jornalcontabil","contabilidadenews"
+]
+BL_EMAIL = [
+   "example","test","sentry","wixpress","noreply","no-reply",
+   "spam","abuse","postmaster","webmaster","google","bing","png","jpg"
+]
+NICHE_TERMS = [
+   "oftalm","dent","odont","clinic","medic","advog","contab",
+   "imobil","veterin","arquitet","psicol","fisio","nutri","farmac","adv.br"
+]
+VALID_DDDS = {
+   "11","12","13","14","15","16","17","18","19","21","22","24","27","28",
+   "31","32","33","34","35","37","38","41","42","43","44","45","46","47","48","49",
+   "51","53","54","55","61","62","63","64","65","66","67","68","69",
+   "71","73","74","75","77","79","81","82","83","84","85","86","87","88","89",
+   "91","92","93","94","95","96","97","98","99"
+}
+CITY_DDDS = {
+   "rio branco":["68"],"maceio":["82"],"brasilia":["61"],
+   "rio de janeiro":["21","22","24"],"sao paulo":["11","12","13","14","15","16","17","18","19"],
+   "porto alegre":["51","53","54","55"],"belo horizonte":["31","32","33","34","35","37","38"],
+   "curitiba":["41","42","43","44","45","46"],"salvador":["71","73","74","75","77"],
+   "fortaleza":["85","88"],"recife":["81","87"],"manaus":["92","97"],
+   "belem":["91","93","94"],"goiania":["62","64"],"natal":["84"],
+   "joao pessoa":["83"],"macapa":["96"],"porto velho":["69"],
+   "boa vista":["95"],"palmas":["63"],"campo grande":["67"],
+   "cuiaba":["65"],"florianopolis":["47","48","49"],"vitoria":["27","28"],
+   "aracaju":["79"],"teresina":["86","89"],"sao luis":["98","99"]
+}
+CITY_GEO = {
+   "rio branco":["rio branco","acre"," ac ","(ac)"],
+   "maceio":["maceio","maceio","alagoas"," al ","(al)"],
+   "brasilia":["brasilia","brasilia","distrito federal"," df ","(df)"],
+   "rio de janeiro":["rio de janeiro"," rj ","(rj)"],
+   "sao paulo":["sao paulo","sao paulo"," sp ","(sp)"],
+   "porto alegre":["porto alegre","rio grande do sul"," rs ","(rs)"],
+   "belo horizonte":["belo horizonte","minas gerais"," mg ","(mg)"],
+   "curitiba":["curitiba","parana"," pr ","(pr)"],
+   "salvador":["salvador","bahia"," ba ","(ba)"],
+   "fortaleza":["fortaleza","ceara"," ce ","(ce)"],
+   "recife":["recife","pernambuco"," pe ","(pe)"],
+   "manaus":["manaus","amazonas"," am ","(am)"],
+   "belem":["belem","belem","para"," pa ","(pa)"],
+   "goiania":["goiania","goiania","goias"," go ","(go)"],
+   "natal":["natal","rio grande do norte"," rn ","(rn)"],
+   "joao pessoa":["joao pessoa","joao pessoa","paraiba"," pb ","(pb)"],
+   "macapa":["macapa","macapa","amapa"," ap ","(ap)"],
+   "porto velho":["porto velho","rondonia"," ro ","(ro)"],
+   "boa vista":["boa vista","roraima"," rr ","(rr)"],
+   "palmas":["palmas","tocantins"," to ","(to)"],
+   "campo grande":["campo grande","mato grosso do sul"," ms ","(ms)"],
+   "cuiaba":["cuiaba","cuiaba","mato grosso"," mt ","(mt)"],
+   "florianopolis":["florianopolis","florianopolis","santa catarina"," sc ","(sc)"],
+   "vitoria":["vitoria","vitoria","espirito santo"," es ","(es)"],
+   "aracaju":["aracaju","sergipe"," se ","(se)","sergipano"],
+   "teresina":["teresina","piaui"," pi ","(pi)"],
+   "sao luis":["sao luis","sao luis","maranhao"," ma ","(ma)"],
+}
+CITY_WORDS = {
+   "em","de","da","do","no","na","nos","nas","para","por","com","uma","um",
+   "maceio","brasilia","recife","fortaleza","manaus","belem","curitiba",
+   "salvador","rio","branco","palmas","macapa","porto","alegre","velho",
+   "goiania","campo","grande","cuiaba","florianopolis","vitoria",
+   "aracaju","teresina","joao","pessoa","natal","sao","luis","paulo",
+   "horizonte","belo","janeiro","sergipe","sergipano"
+}
+SOFT_BL = ["guia","catalogo","lista","ranking","portal","encontre","busca"]
+FREE_EMAIL = {"gmail.com","hotmail.com","outlook.com","yahoo.com",
+             "live.com","icloud.com","bol.com.br","uol.com.br"}
+
+def norm(s):
+   return "".join(c for c in unicodedata.normalize("NFD", s)
+                  if unicodedata.category(c) != "Mn").lower()
+
+def get_city_key(query):
+   q = norm(query)
+   for city in CITY_GEO:
+       if city in q: return city
+   return None
+
+def get_preferred_ddds(city_key):
+   return set(CITY_DDDS.get(city_key, [])) if city_key else None
+
+def extract_ddd(phone):
+   d = re.sub(r"\\D", "", phone)
+   return d[:2] if len(d) >= 10 else None
+
+def matches_geo(text, city_key):
+   if not city_key: return True
+   terms = CITY_GEO.get(city_key, [])
+   t = " " + norm(text) + " "
+   return any(term in t for term in terms)
+
+def has_keyword(text, query):
+   words = [w for w in re.sub(r"[^\\w\\s]","",norm(query)).split()
+            if w not in CITY_WORDS and len(w) > 3]
+   t = norm(text)
+   return any(w[:6] in t for w in words)
+
+def is_valid_phone(p, preferred_ddds):
+   d = re.sub(r"\\D", "", p)
+   if len(d) < 10 or len(d) > 11: return False
+   if any(d.count(x) >= 7 for x in "0123456789"): return False
+   if d[:2] not in VALID_DDDS: return False
+   if preferred_ddds and d[:2] not in preferred_ddds: return False
+   return True
+
+def normalize_phone(p):
+   d = re.sub(r"\\D", "", p)
+   if len(d) == 10: return f"({d[:2]}) {d[2:6]}-{d[6:]}"
+   if len(d) == 11: return f"({d[:2]}) {d[2:7]}-{d[7:]}"
+   return p
+
+def is_valid_email(e):
+   e = e.strip().lower()
+   if "@" not in e: return False
+   local, dom = e.split("@", 1)
+   if "." not in dom or len(local) < 2 or len(dom) < 4: return False
+   if "%" in e or " " in e: return False
+   return not any(b in e for b in BL_EMAIL)
+
+def email_matches_site(email, site_url):
+   try:
+       site_dom = urllib.parse.urlparse(site_url).netloc.replace("www.", "").lower()
+       email_dom = email.split("@", 1)[1].lower()
+       site_root = site_dom.split(".")[0]
+       return (
+           email_dom == site_dom or
+           email_dom.endswith("." + site_dom) or
+           site_root in email_dom
+       )
+   except: return False
+
+def try_contact_page(base_url, headers):
+   for path in ["/contato","/contact","/fale-conosco","/sobre"]:
+       try:
+           r = requests.get(base_url.rstrip("/") + path, timeout=5, headers=headers)
+           if r.status_code == 200: return r.text
+       except: pass
+   return ""
+
+def compute_score(title, email, phone, site_url, query, city_key):
+   url_l = site_url.lower()
+   if "gov.br" in url_l or "prefeitura" in url_l: return 0
+   if any(b in url_l for b in SOFT_BL): return 0
+
+   preferred_ddds = get_preferred_ddds(city_key)
+
+   # Penalidade dura: DDD fora da cidade-alvo → descarta
+   if phone and phone != "N/A" and preferred_ddds:
+       ddd = extract_ddd(phone)
+       if ddd and ddd not in preferred_ddds:
+           return 0
+
+   score = 0
+   site_dom = urllib.parse.urlparse(site_url).netloc.replace("www.", "").lower()
+   geo_terms = CITY_GEO.get(city_key, []) if city_key else []
+   combined_meta = norm(site_dom + " " + (title or ""))
+   geo_in_meta = any(t.strip() in combined_meta for t in geo_terms)
+
+   # Sem marcador geo no domínio/título → penalidade leve
+   if city_key and not geo_in_meta:
+       score -= 20
+
+   # Email: +40 corporativo, +20 free, +15 bônus domínio match
+   if email and email != "N/A":
+       dom = email.split("@", 1)[1].lower()
+       score += 20 if dom in FREE_EMAIL else 40
+       if site_dom.split(".")[0] in dom: score += 15
+   # Telefone: +20
+   if phone and phone != "N/A": score += 20
+   # Nicho no domínio: +15
+   if any(n in site_dom for n in NICHE_TERMS): score += 15
+   # Geo no meta: +10
+   if geo_in_meta: score += 10
+   # Nicho no título: +10
+   words = [w for w in re.sub(r"[^\\w\\s]","",norm(query)).split()
+            if w not in CITY_WORDS and len(w) > 3]
+   if any(w[:6] in norm(title or "") for w in words): score += 10
+
+   return max(0, min(100, score))
+
+QUERY = "${query}"
+city_key = get_city_key(QUERY)
+preferred_ddds = get_preferred_ddds(city_key)
+leads = []
+seen = set()
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36"}
+
+searches = [
+   QUERY + " contato telefone email site:.br",
+   QUERY + " contato telefone email"
+]
+
+for sq in searches:
+   if len(leads) >= 5: break
+   try:
+       results = DDGS().text(sq, max_results=40)
+   except Exception:
+       results = []
+   for r in results:
+       if len(leads) >= 5: break
+       href  = r.get("href", "")
+       title = r.get("title", "")
+       snip  = r.get("body", "")
+       url_l = href.lower()
+       dom   = urllib.parse.urlparse(url_l).netloc.replace("www.", "")
+       if any(b in url_l for b in BL_URL): continue
+       if dom in seen: continue
+       if not matches_geo(title + " " + snip, city_key): continue
+       try:
+           res = requests.get(href, timeout=7, headers=HEADERS)
+           if res.status_code != 200: continue
+           text = res.text
+           if not has_keyword(text[:5000], QUERY): continue
+           if not matches_geo(title + " " + snip + " " + text[:3000], city_key): continue
+           email_pat = r"[a-zA-Z0-9._%+]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+           phone_pat = r"\\(?\\d{2}\\)?[ .-]?9?\\d{4}[ .-]?\\d{4}"
+           raw_emails = re.findall(email_pat, text)
+           if not raw_emails:
+               base = urllib.parse.urlparse(href).scheme + "://" + dom
+               ct = try_contact_page(base, HEADERS)
+               if ct: raw_emails = re.findall(email_pat, ct)
+           raw_phones = re.findall(phone_pat, text)
+           emails = [e for e in raw_emails
+                     if is_valid_email(e) and email_matches_site(e, href)]
+           phones = [normalize_phone(p) for p in raw_phones
+                     if is_valid_phone(p, preferred_ddds)]
+           email = emails[0] if emails else "N/A"
+           phone = phones[0] if phones else "N/A"
+           if email != "N/A" or phone != "N/A":
+               score = compute_score(title, email, phone, href, QUERY, city_key)
+               if score == 0: continue
+               leads.append({
+                   "title": title[:80],
+                   "link": href,
+                   "email": email,
+                   "phone": phone,
+                   "score": score
+               })
+               seen.add(dom)
+       except Exception:
+           pass
+
+leads.sort(key=lambda x: x["score"], reverse=True)
+print(json.dumps(leads, ensure_ascii=False))
+`;
+};
+
+// ─── runLeads ────────────────────────────────────────────────────────────────
+const runLeads = (ctx, q) => {
+ conversationHistory = [];
+ state.selectedLead = null;
+ triggerAndWait(ctx, buildLeadScript(q), "🔎 Scanner...", "🎯 Leads:\n\n");
+};
+
+// ─── Cripto ──────────────────────────────────────────────────────────────────
+const getCripto = async (ctx, ativo) => {
+ const id = ativo.toUpperCase();
+ const cids = {BTC:"bitcoin",ETH:"ethereum",BNB:"binancecoin",SOL:"solana",ADA:"cardano",XRP:"ripple"};
+ const cid = cids[id] || id.toLowerCase();
+ const py = `import requests
+r=requests.get("https://api.coingecko.com/api/v3/simple/price?ids=${cid}&vs_currencies=brl,usd&include_24hr_change=true",timeout=8)
+d=r.json()["${cid}"]
+brl=f"{d['brl']:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+chg=round(d['brl_24h_change'],2)
+print(f"${id}: R$ {brl} / USD {d['usd']:,.2f} | 24h: {chg}%")`;
+ await triggerAndWait(ctx, py, `${id}...`, "");
+};
+
+const analiseCripto = async (ctx, ativo) => {
+ const id = ativo.toUpperCase();
+ const cids = {BTC:"bitcoin",ETH:"ethereum",BNB:"binancecoin",SOL:"solana",ADA:"cardano",XRP:"ripple"};
+ const cid = cids[id] || id.toLowerCase();
+ const py = `import requests
+r=requests.get("https://api.coingecko.com/api/v3/coins/${cid}/market_chart?vs_currency=brl&days=30",timeout=10)
+prices=[p[1] for p in r.json()["prices"]]
+def sma(d,n): return sum(d[-n:])/n if len(d)>=n else None
+def rsi(d,n=14):
+   g,l=[],[]
+   for i in range(1,len(d)): x=d[i]-d[i-1]; g.append(max(x,0)); l.append(max(-x,0))
+   ag=sum(g[-n:])/n; al=sum(l[-n:])/n
+   return 100 if al==0 else round(100-100/(1+ag/al),1)
+ma7=sma(prices,7); ma21=sma(prices,21); rv=rsi(prices); p=prices[-1]
+tend="ALTA" if ma7 and ma21 and ma7>ma21 else "BAIXA"
+sig="SOBREVENDIDO" if rv<30 else("SOBRECOMPRADO" if rv>70 else "NEUTRO")
+def fmt(v): return f"{v:,.2f}".replace(",","X").replace(".",",").replace("X",".") if v else "N/A"
+print(f"${id} 30d | R$ {fmt(p)} | MA7:{fmt(ma7)} | MA21:{fmt(ma21)} | RSI:{rv} | {tend} | {sig}")`;
+ await triggerAndWait(ctx, py, `Analisando ${id}...`, "");
+};
+
+const dominanciaCripto = async (ctx) => {
+ const py = `import requests
+g=requests.get("https://api.coingecko.com/api/v3/global",timeout=8).json()["data"]
+fg=requests.get("https://api.alternative.me/fng/",timeout=8).json()["data"][0]
+print(f"BTC Dom: {g['market_cap_percentage']['btc']:.1f}% | ETH: {g['market_cap_percentage']['eth']:.1f}% | F&G: {fg['value']} ({fg['value_classification']})")`;
+ await triggerAndWait(ctx, py, "Dominancia...", "");
+};
+
+// ─── Alertas ─────────────────────────────────────────────────────────────────
+const verificarAlertas = async () => {
+ if (!alertas.length) return;
+ const ids = {BTC:"bitcoin",ETH:"ethereum",BNB:"binancecoin",SOL:"solana",ADA:"cardano",XRP:"ripple"};
+ for (const a of [...alertas]) {
+   try {
+     const cid = ids[a.ativo] || a.ativo.toLowerCase();
+     const r = await axios.get(
+       `https://api.coingecko.com/api/v3/simple/price?ids=${cid}&vs_currencies=brl`,
+       { timeout: 6000 }
+     );
+     const preco = r.data[cid]?.brl;
+     if (!preco) continue;
+     if (a.operador === '<' ? preco < a.valor : preco > a.valor) {
+       await bot.telegram.sendMessage(a.chatId,
+         `🔔 ALERTA: ${a.ativo} ${a.operador} R$${a.valor.toLocaleString('pt-BR')}\nAtual: R$${preco.toLocaleString('pt-BR')}`
+       );
+       alertas = alertas.filter(x => x.id !== a.id);
+     }
+   } catch (e) { console.log('[alerta fail]', e.message); }
+ }
+};
+setInterval(verificarAlertas, 2 * 60 * 1000);
+
+// ─── Handler ─────────────────────────────────────────────────────────────────
+bot.on('text', async (ctx) => {
+ const t  = ctx.message.text;
+ const tl = t.toLowerCase().trim();
+ let m;
+
+ if (tl.includes("quem") && tl.includes("voc")) {
+   conversationHistory = [];
+   return ctx.reply(persona);
+ }
+
+ if (tl === "status") {
+   conversationHistory = [];
+   return ctx.reply(
+     `Leads: ${state.leads.length}/${MAX_LEADS} | ${state.selectedLead?.title || 'Nenhum'}\n` +
+     `Alertas: ${alertas.length}`
+   );
+ }
+
+ if ((m = tl.match(/^\/(cripto|cotacao)\s+(\w+)/)))  return getCripto(ctx, m[2]);
+ if ((m = tl.match(/^\/(analise|analisa)\s+(\w+)/))) return analiseCripto(ctx, m[2]);
+ if (tl === '/dominancia' || tl === '/dom')          return dominanciaCripto(ctx);
+
+ if ((m = tl.match(/^\/alerta\s+(\w+)\s*([<>])\s*([\d.,]+)/))) {
+   const ativo = m[1].toUpperCase(), op = m[2];
+   const val = parseFloat(m[3].replace(/\./g,'').replace(',','.'));
+   const id = alertaIdCounter++;
+   alertas.push({ id, ativo, operador: op, valor: val, chatId: ctx.chat.id });
+   return ctx.reply(`✅ Alerta #${id}: ${ativo} ${op} R$${val.toLocaleString('pt-BR')} (check 2min)`);
+ }
+
+ if (tl === '/alertas') {
+   return ctx.reply(
+     alertas.length
+       ? "Alertas:\n" + alertas.map(a =>
+           `#${a.id} ${a.ativo} ${a.operador} R$${a.valor.toLocaleString('pt-BR')}`
+         ).join('\n')
+       : "Nenhum alerta."
+   );
+ }
+
+ if ((m = tl.match(/^\/cancela\s+(\d+)/))) {
+   alertas = alertas.filter(a => a.id !== parseInt(m[1]));
+   return ctx.reply(`🗑️ Alerta #${m[1]} removido.`);
+ }
+
+ if ((m = tl.match(/^(buscar|encontrar|procurar)\s+(.+)/i))) return runLeads(ctx, m[2]);
+
+ if (tl.includes("analise o") && !tl.startsWith('/analise')) {
+   const idx = parseInt(tl.match(/\d+/)?.[0] || '1');
+   state.selectedLead = state.leads[idx - 1];
+   return ctx.reply(
+     state.selectedLead
+       ? `Lead [${idx}]: ${state.selectedLead.title}\nEmail: ${state.selectedLead.email}\nFone: ${state.selectedLead.phone}\nScore: ${state.selectedLead.score ?? 'N/A'}/100`
+       : "Lead nao encontrado."
+   );
+ }
+
+ if (tl === "vale a pena?") {
+   if (!state.selectedLead) return ctx.reply("Selecione um lead primeiro.");
+   const score = typeof state.selectedLead.score === "number"
+     ? state.selectedLead.score
+     : (state.selectedLead.email !== "N/A" ? 85 : 40);
+   return ctx.reply(
+     `Score: ${score}/100. ` +
+     (score >= 70 ? "✅ Lead quente." : score >= 40 ? "⚠️ Lead morno, nutrir primeiro." : "❌ Lead frio.")
+   );
+ }
+
+ if (tl.startsWith('/leads ')) return runLeads(ctx, t.slice(7));
+
+ if (tl.startsWith('/exec '))
+   return triggerAndWait(ctx, t.slice(6), "⚙️ Executando...", "Resultado:\n");
+
+ if (tl === '/dolar') {
+   const py = 'import requests\nd=requests.get("https://open.er-api.com/v6/latest/USD",timeout=8).json()["rates"]["BRL"]\nprint(round(d,4))';
+   return triggerAndWait(ctx, py, "💵 Buscando dólar...", "R$ ");
+ }
+
+ if (tl === '/btc') {
+   const py = 'import requests\nv=requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl",timeout=8).json()["bitcoin"]["brl"]\nprint(f"{v:,.0f}".replace(",","."))';
+   return triggerAndWait(ctx, py, "₿ BTC em BRL...", "");
+ }
+
+ ctx.reply(await askLLM(t));
+});
+
+// ─── Launch ──────────────────────────────────────────────────────────────────
+bot.launch().then(() => console.log("MiniClawwork v5.0 – geo fix + DDD hard block + token routing"));

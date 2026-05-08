@@ -1,0 +1,114 @@
+const { Telegraf } = require('telegraf');
+const { Octokit } = require('@octokit/rest');
+const AdmZip = require('adm-zip');
+const axios = require('axios');
+const fs = require('fs');
+
+const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+const GROQ_KEY = process.env.GROQ_API_KEY;
+
+let state = { leads: [], selectedLead: null, lastResult: "Nenhum dado." };
+
+const match = (text, triggers) => triggers.some(t => text.toLowerCase().includes(t));
+function extractNumber(text) { const m = text.match(/\d+(\.\d+)?/); return m ? parseFloat(m[0]) : 0; }
+
+async function callLLM(messages, system = "Você é o MiniClawwork, técnico e direto.") {
+  try {
+    const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama-3.1-8b-instant',
+      messages: [{ role: 'system', content: system }, ...messages]
+    }, { headers: { 'Authorization': `Bearer ${GROQ_KEY}` }, timeout: 10000 });
+    return res.data.choices[0].message.content.trim();
+  } catch (e) { return "⚠️ Erro na LLM: " + e.message; }
+}
+
+async function triggerAndWait(ctx, code, statusText = "⏳ Processando...") {
+  try {
+    const msg = await ctx.reply(statusText);
+    await octokit.rest.actions.createWorkflowDispatch({
+      owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME,
+      workflow_id: 'code_executor.yml', ref: 'main', inputs: { code: code }
+    });
+    
+    await new Promise(r => setTimeout(r, 15000));
+    let runId;
+    for(let i=0; i<20; i++) {
+      const runs = await octokit.rest.actions.listWorkflowRuns({ 
+        owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, workflow_id: 'code_executor.yml', per_page: 1 
+      });
+      if (runs.data.workflow_runs[0] && runs.data.workflow_runs[0].status === 'completed') {
+        runId = runs.data.workflow_runs[0].id;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 5000));
+    }
+
+    if (!runId) return ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, "❌ Timeout no GitHub.");
+
+    const artifacts = await octokit.rest.actions.listWorkflowRunArtifacts({ owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, run_id: runId });
+    if (artifacts.data.artifacts.length > 0) {
+      const download = await octokit.rest.actions.downloadArtifact({ owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, artifact_id: artifacts.data.artifacts[0].id, archive_format: 'zip' });
+      const response = await axios.get(download.url, { responseType: 'arraybuffer' });
+      fs.writeFileSync('result.zip', Buffer.from(response.data));
+      const zip = new AdmZip('result.zip');
+      const output = zip.readAsText('output.txt');
+      
+      // Parsing de leads e matemática
+      if (output.includes('🏢')) {
+        state.leads = [];
+        output.split('----------').forEach(block => {
+          const nameMatch = block.match(/🏢\s*(.*)/);
+          const urlMatch = block.match(/🔗\s*(.*)/);
+          if (nameMatch && urlMatch) state.leads.push({ name: nameMatch[1].trim(), url: urlMatch[1].trim() });
+        });
+      }
+      const mathMatch = output.match(/Valor:\s*([\d.]+)/);
+      state.lastResult = mathMatch ? mathMatch[1] : output.trim();
+      
+      ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, "✅ Resultado:\n\n" + output.substring(0, 3000));
+    } else {
+      ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, "⚠️ Nenhum dado retornado.");
+    }
+  } catch (e) { ctx.reply("❌ Erro: " + e.message); }
+}
+
+bot.on('text', async (ctx) => {
+  const text = ctx.message.text.trim();
+  const lower = text.toLowerCase();
+
+  // 1. PONTE MATEMÁTICA
+  if (match(lower, ["some", "soma", "multiplique", "divida", "subtraia"]) && !isNaN(parseFloat(state.lastResult))) {
+    const num = extractNumber(lower);
+    let op = lower.includes("soma") ? `${state.lastResult} + ${num}` : lower.includes("multiplique") ? `${state.lastResult} * ${num}` : lower.includes("divida") ? `${state.lastResult} / ${num}` : `${state.lastResult} - ${num}`;
+    return triggerAndWait(ctx, `print("Valor:", ${op})`, "🧠 Calculando...");
+  }
+
+  // 2. SCANNER COM FILTRO
+  if (match(lower, ["buscar", "leads", "empresas"])) {
+    const q = lower.replace(/buscar|leads|empresas/g, "").trim();
+    const code = `from ddgs import DDGS
+blacklist = ['lista','melhores','top','guia','catalogo','doctoralia','boaconsulta','econodata','jusbrasil','avaliamed','cotanet','getninjas','cronoshare','yelp','facebook','linkedin','instagram','youtube','blog','portal','site:']
+with DDGS() as ddgs:
+    for r in list(ddgs.text("${q}", region='br-pt', max_results=30)):
+        if any(b in r['href'].lower() for b in blacklist): continue
+        if len(r['title']) > 120: continue
+        print(f"🏢 {r['title']}\\n🔗 {r['href']}\\n----------")`;
+    return triggerAndWait(ctx, code, `🔎 Buscando: ${q}...`);
+  }
+
+  // 3. ANÁLISE E SCORE
+  if (match(lower, ["analise"])) {
+    const idx = parseInt(lower.match(/\d+/)) - 1 || 0;
+    if (!state.leads[idx]) return ctx.reply("⚠️ Lead não encontrado.");
+    state.selectedLead = state.leads[idx];
+    return triggerAndWait(ctx, `import requests\nr = requests.get("${state.selectedLead.url}", timeout=10)\nprint(f"WhatsApp: {'Sim' if 'whatsapp' in r.text.lower() else 'Não'}")`, `🔬 Analisando ${state.selectedLead.name}...`);
+  }
+
+  if (lower === "status") return ctx.reply(`🤖 Status: ${state.leads.length} leads. Último: ${state.lastResult}`);
+  
+  const response = await callLLM([{ role: 'user', content: text }]);
+  ctx.reply(response + "\n\n⚡ _v3.6 Unificada_");
+});
+
+bot.launch();
