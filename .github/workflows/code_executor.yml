@@ -5,9 +5,12 @@ on:
       code:
         description: 'Code to execute'
         required: true
+permissions:
+  contents: read
 jobs:
   execute:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
@@ -17,4 +20,4 @@ jobs:
           python script.py > output.txt 2>&1 || echo "ERRO_NO_SCRIPT" >> output.txt
         env: {CODE_INPUT: "${{ github.event.inputs.code }}"}
       - uses: actions/upload-artifact@v4
-        with: {name: output-result, path: output.txt}
+        with: {name: output-result, path: output.txt, retention-days: 1}
