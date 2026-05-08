@@ -7,6 +7,7 @@ const cryptoSkill = require('./skills/crypto');
 const llmSkill    = require('./skills/llm');
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
+const OWNER_ID = parseInt(process.env.OWNER_ID);
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
 let state = { leads: [], selectedLead: null };
@@ -274,6 +275,7 @@ setInterval(verificarAlertas, 2 * 60 * 1000);
 bot.on('text', async (ctx) => {
     const t = ctx.message.text;
     const tl = t.toLowerCase().trim();
+    if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
     let m;
 
     if (tl.includes("quem") && tl.includes("voc")) { conversationHistory = []; return ctx.reply(persona); }
