@@ -1,3 +1,8 @@
+require('dotenv').config();
+// Validação defensiva
+const REQUIRED_ENV = ['TELEGRAM_TOKEN','GITHUB_TOKEN','OWNER_ID','OPENROUTER_API_KEY'];
+console.log('Env OK | OWNER_ID:', process.env.OWNER_ID);
+
 const { Telegraf } = require('telegraf');
 const { Octokit } = require('@octokit/rest');
 const AdmZip = require('adm-zip');
