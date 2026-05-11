@@ -1,0 +1,3 @@
+[2026-05-10 18:55:54] [INFO ] [teste] logger funcionando {"versao":"v6.3"}
+[2026-05-10 18:55:54] [WARN ] [teste] aviso de teste
+[2026-05-10 18:55:54] [ERROR] [teste] erro de teste

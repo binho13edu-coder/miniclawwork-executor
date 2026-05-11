@@ -4,7 +4,7 @@ const FACTUAL_PATTERNS = [
   /\bquem\b/,/\bonde\b/,/\bo que é\b/,/\bme fale\b/,/\bconte\b/,
   /\bhistória\b/,/\bcomo funciona\b/,/\bcolégio\b/,/\bescola\b/,
   /\buniversidade\b/,/\bempresa\b/,/\bcidade\b/,/\bbairro\b/,
-  /\bo que são\b/,/\bexplique\b/,/\bdescreva\b/
+  /\bo que são\b/,/\bexplique\b/,/\bdescreva\b/,/\bqual\b/,/\bmaior\b/,/\bmelhor\b/,/\bpor que\b/
 ];
 const MATH_PATTERNS = [
   /\bcalcul/,/\braiz\b/,/\bsoma\b/,/\bdivid/,
@@ -18,7 +18,7 @@ const detectIntent = (t) => {
   return 'chat';
 };
 
-const getMaxTokens = (t) => ({ factual: 400, math: 250, chat: 200 }[detectIntent(t)] ?? 250);
+const getMaxTokens = (t) => ({ factual: 400, math: 250, chat: 300 }[detectIntent(t)] ?? 250);
 
 const PROVIDERS = [
   ['https://api.groq.com/openai/v1/chat/completions',        'GROQ_API_KEY',       'llama-3.3-70b-versatile'],

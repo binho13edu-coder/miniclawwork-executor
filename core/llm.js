@@ -102,7 +102,7 @@ class LLMRouter {
   }
   async _callProvider(provider, messages, model, signal) {
     const apiKey = process.env[provider.apiKeyEnv];
-    const body   = JSON.stringify({ model: model || provider.models[0], messages, max_tokens: 1024, stream: false });
+    const body   = JSON.stringify({ model: model || provider.models[0], messages, max_tokens: opts?.maxTokens || 1024, stream: false });
     const res    = await fetch(`${provider.baseURL}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },

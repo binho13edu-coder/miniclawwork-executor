@@ -10,6 +10,7 @@ const axios = require('axios');
 const fs = require('fs');
 const cryptoSkill = require('./skills/crypto');
 const llmSkill    = require('./skills/llm');
+const coreRouter = require('./core/router');
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
 const OWNER_ID = parseInt(process.env.OWNER_ID);
@@ -93,11 +94,17 @@ async function triggerAndWait(ctx, code, statusText, outputPrefix) {
     }
 }
 
-const askLLM = (t) => llmSkill.askLLM(t, {
-  history: conversationHistory,
-  persona,
-  maxHistoryTurns: MAX_HISTORY_TURNS
-});
+const askLLM = async (t) => {
+  try {
+    const res = await coreRouter.handle(t);
+    if (res) return res;
+  } catch (e) { /* fallback */ }
+  return llmSkill.askLLM(t, {
+    history: conversationHistory,
+    persona,
+    maxHistoryTurns: MAX_HISTORY_TURNS
+  });
+};
 
 const runLeads = (ctx, q) => {
     conversationHistory = [];
