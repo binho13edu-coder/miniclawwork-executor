@@ -12,8 +12,9 @@ const cryptoSkill = require('./skills/crypto');
 const llmSkill    = require('./skills/llm');
 const coreRouter = require('./core/router');
 const { handleFinance } = require('./core/finance');
+const { ingestDocument } = require('./core/intake.js');
 
-const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
+const bot = new Telegraf(process.env.TELEGRAM_TOKEN, { handlerTimeout: 300000 });
 const OWNER_ID = parseInt(process.env.OWNER_ID);
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
@@ -285,6 +286,45 @@ const verificarAlertas = async () => {
 };
 setInterval(verificarAlertas, 2 * 60 * 1000);
 
+
+bot.command('ctx', async (ctx) => {
+  try {
+    const docsDir = './docs/';
+    if (!fs.existsSync(docsDir)) return ctx.reply('Nenhum contexto salvo. Envie .md/.txt/.json primeiro!');
+    const files = fs.readdirSync(docsDir).filter(f => f.endsWith('.json') && !f.includes('_'));
+    if (files.length === 0) return ctx.reply('Nenhum documento encontrado.');
+    const metas = files.slice(-5).map(f => {
+      try { return JSON.parse(fs.readFileSync('./docs/' + f, 'utf8')); } catch(e) { return null; }
+    }).filter(Boolean);
+    let list = '📚 Contextos Salvos:' + '\n\n';
+    metas.forEach(m => { list += '• ' + m.id + ' - ' + m.name + '\n'; });
+    list += '\nEnvie mais docs ou use o ID.';
+    await ctx.reply(list);
+  } catch(e) { ctx.reply('Erro: ' + e.message); }
+});
+
+// V6.5 - Context Retrieval: detecta Doc ID na mensagem
+bot.hears(/\b([0-9a-f]{8})\b/i, async (ctx) => {
+  const docId = ctx.match[1].toLowerCase();
+  const docsDir = './docs/';
+  const metaPath = docsDir + docId + '.json';
+  if (!fs.existsSync(metaPath)) return; // ID não é doc, deixa cair no LLM
+  try {
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    const contentPath = docsDir + docId + '_' + meta.name;
+    if (!fs.existsSync(contentPath)) return ctx.reply('Arquivo não encontrado no disco.');
+    const content = fs.readFileSync(contentPath, 'utf8').slice(0, 3000); // max 3k chars
+    const userMsg = ctx.message.text;
+    const shortContent = content.slice(0, 600);
+    const prompt = 'Documento: ' + meta.name + '\n\n' + shortContent + '\n\n---\nPergunta: ' + userMsg;
+    console.log('[CTX-DBG]', { docId, filename: meta.name, contextLength: content.length, promptLength: prompt.length, maxTokens: 1024 });
+    const { handle } = require('./core/router');
+    const reply = await handle(prompt);
+    await ctx.reply(reply);
+  } catch(e) {
+    ctx.reply('Erro ao recuperar contexto: ' + e.message);
+  }
+});
 bot.on('text', async (ctx) => {
     const t = ctx.message.text;
     const tl = t.toLowerCase().trim();
@@ -335,6 +375,31 @@ bot.on('text', async (ctx) => {
     if (tl === '/btc') return triggerAndWait(ctx, `import requests\nv=requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl").json()['bitcoin']['brl']\nprint(f"R$ {v:,.0f}".replace(",","."))`, "₿...", "");
 
     ctx.reply(await askLLM(t));
+});
+
+
+
+bot.on('document', async (ctx) => {
+  try {
+    const file = ctx.message?.document;
+    if (!file) return;
+    
+    const ext = (file.file_name || '').split('.').pop()?.toLowerCase();
+    if (!['md','txt','json'].includes(ext)) {
+      return ctx.reply('❌ Apenas .md .txt .json');
+    }
+    
+    const link = await ctx.telegram.getFileLink(file.file_id);
+    const res = await fetch(link);
+    if (!res.ok) throw new Error('Fetch failed');
+    
+    const content = Buffer.from(await res.arrayBuffer()).toString('utf8');
+    const docId = await require('./core/intake.js').ingestDocument(file.file_name, content, ext);
+    await ctx.reply('✅ Contexto salvo! Doc ID: ' + docId);
+  } catch(e) {
+    console.error('Doc handler:', e);
+    ctx.reply('❌ Upload falhou: ' + e.message);
+  }
 });
 
 bot.launch().then(() => console.log("MiniClawwork v3.9 - DEBUG MODE"));
