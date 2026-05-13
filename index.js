@@ -181,47 +181,35 @@ for cidade, (codigos, uf, nomes) in geo.items():
         ddds = codigos
         geo_palavras = nomes + [cidade]
         break
-print("DEBUG: iniciando DDGS")
 with DDGS() as ddgs:
     results = list(ddgs.text("${q} contato telefone site oficial", max_results=50))
-print(f"DEBUG: resultados DDGS={len(results)}")
 for r in results:
     u = r['href'].lower()
     dom = urllib.parse.urlparse(u).netloc.replace('www.','')
-    print(f"DEBUG: analisando={r['href']}")
     if any(b in u for b in bl) or dom in seen: 
-        print(f"DEBUG: bloqueado por blacklist ou duplicado")
         continue
     q_words = [w for w in "${q}".lower().split() if len(w)>3]
     title_lower = r['title'].lower()
     if not any(w in title_lower or w in u for w in q_words):
-        print(f"DEBUG: bloqueado por relevancia")
         continue
     try:
-        print("DEBUG: request start")
         res = requests.get(r['href'], timeout=6, headers={'User-Agent':'Mozilla/5.0'})
-        print(f"DEBUG: status={res.status_code}")
         if res.status_code == 200:
             em = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}', res.text)
             ph = re.findall(r'\\(?\\d{2}\\)?\\s?9?\\d{4}[-\\s]?\\d{4}', res.text)
             e = [x for x in em if not any(j in x.lower() for j in ebl)]
             p = [x for x in ph if not is_fake(x) and (not ddds or any(re.sub(r"\\D","",x).lstrip("0")[:2]==d for d in ddds))]
-            print(f"DEBUG: emails={len(e)} telefones={len(p)}")
             # filtro geográfico: título/link/html deve conter cidade/estado
             html_lower = res.text[:5000].lower()
             geo_ok = True
             if geo_palavras:
                 geo_ok = any(gp in r['title'].lower() or gp in u or gp in html_lower for gp in geo_palavras)
             if not geo_ok:
-                print(f"DEBUG: bloqueado por geografia")
             elif e or p:
                 leads.append({"title":r['title'], "link":r['href'], "email":e[0] if e else "N/A", "phone":p[0] if p else "N/A"})
                 seen.add(dom)
-                print(f"DEBUG: lead adicionado={r['href']}")
     except Exception as ex:
-        print(f"DEBUG: erro request={str(ex)}")
     if len(leads) >= 5: break
-print(f"DEBUG: total leads={len(leads)}")
 print(json.dumps(leads))`;
     triggerAndWait(ctx, py, "🔎 Scanner...", "🎯 Leads:\n\n");
 };
@@ -320,7 +308,6 @@ bot.hears(/\b([0-9a-f]{8})\b/i, async (ctx) => {
       { role: 'system', content: 'Você é um assistente direto. Responda APENAS com base no documento fornecido. Não use conhecimento externo.' },
       { role: 'user', content: 'Documento: ' + meta.name + '\n\n' + shortContent + '\n\n---\nPergunta: ' + userMsg.replace(/\b[0-9a-f]{8}\b/gi, '').trim() }
     ];
-    console.log('[CTX-DBG]', { docId, filename: meta.name, contextLength: content.length, promptLength: messages[1].content.length, maxTokens: 1024 });
     const { handle } = require('./core/router');
     const reply = await handle(messages);
     await ctx.reply(reply);
@@ -405,4 +392,4 @@ bot.on('document', async (ctx) => {
   }
 });
 
-bot.launch().then(() => console.log("MiniClawwork v3.9 - DEBUG MODE"));
+bot.launch().then(() => console.log("MiniClawwork v3.9 online"));
