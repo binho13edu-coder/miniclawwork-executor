@@ -1,10 +1,10 @@
 // core/router.js — wrapper mínimo para o OIS
-// Usa a instância router já exportada por core/llm.js
-
 const { router } = require('./llm');
-
-async function handle(text) {
-  return await router.chat(text);
+async function handle(input) {
+  const messages = typeof input === 'string'
+    ? [{ role: 'user', content: input }]
+    : input;
+  const result = await router.chat(messages);
+  return typeof result === 'object' ? result.content : result;
 }
-
 module.exports = { handle };
