@@ -315,11 +315,14 @@ bot.hears(/\b([0-9a-f]{8})\b/i, async (ctx) => {
     if (!fs.existsSync(contentPath)) return ctx.reply('Arquivo não encontrado no disco.');
     const content = fs.readFileSync(contentPath, 'utf8').slice(0, 3000); // max 3k chars
     const userMsg = ctx.message.text;
-    const shortContent = content.slice(0, 600);
-    const prompt = 'Documento: ' + meta.name + '\n\n' + shortContent + '\n\n---\nPergunta: ' + userMsg;
-    console.log('[CTX-DBG]', { docId, filename: meta.name, contextLength: content.length, promptLength: prompt.length, maxTokens: 1024 });
+    const shortContent = content;
+    const messages = [
+      { role: 'system', content: 'Você é um assistente direto. Responda APENAS com base no documento fornecido. Não use conhecimento externo.' },
+      { role: 'user', content: 'Documento: ' + meta.name + '\n\n' + shortContent + '\n\n---\nPergunta: ' + userMsg.replace(/\b[0-9a-f]{8}\b/gi, '').trim() }
+    ];
+    console.log('[CTX-DBG]', { docId, filename: meta.name, contextLength: content.length, promptLength: messages[1].content.length, maxTokens: 1024 });
     const { handle } = require('./core/router');
-    const reply = await handle(prompt);
+    const reply = await handle(messages);
     await ctx.reply(reply);
   } catch(e) {
     ctx.reply('Erro ao recuperar contexto: ' + e.message);
