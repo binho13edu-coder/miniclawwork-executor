@@ -143,12 +143,14 @@ class LLMRouter {
           return { content: result, provider: provider.name, model: opts.model || provider.models[0], attempt };
         } catch (err) {
           clearTimeout(timer);
-          if (err.name === 'AbortError') err.code = 'TIMEOUT';
-          if (err.fatal) { breaker.recordFailure(); lastError = err; break; }
-          if (err.code === 'RATE_LIMIT' && err.retryAfterMs && attempt < this.maxRetries) {
+          const e = err.name === 'AbortError'
+    ? Object.assign(new Error(err.message || 'Timeout'), { code: 'TIMEOUT' })
+    : err;
+          if (e.fatal) { breaker.recordFailure(); lastError = e; break; }
+          if (e.code === 'RATE_LIMIT' && e.retryAfterMs && attempt < this.maxRetries) {
             await sleep(err.retryAfterMs); attempt++; continue;
           }
-          breaker.recordFailure(); lastError = err; attempt++;
+          breaker.recordFailure(); lastError = e; attempt++;
           if (attempt <= this.maxRetries) await sleep(calcBackoff(attempt));
         }
       }
