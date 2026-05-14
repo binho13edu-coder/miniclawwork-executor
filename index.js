@@ -294,10 +294,20 @@ bot.command('ctx', async (ctx) => {
   try {
     const query = ctx.message.text.replace('/ctx', '').trim();
     if (query) {
-      const hits = memory.recallHybrid(String(ctx.from.id), query, { limit: 5 });
-      if (!hits.length) return ctx.reply('Nenhuma memoria encontrada para: ' + query);
-      let out = '🧠 Memorias relevantes para "' + query + '":\n\n';
-      hits.forEach((h, i) => { out += (i+1) + '. [' + h.score + '] ' + h.content.slice(0, 120) + '\n'; });
+      const KnowledgeDB = require('better-sqlite3');
+      const kdb = new KnowledgeDB('./data/knowledge/documents.db');
+      const stop = new Set(['de','a','o','e','que','um','uma','para','com','em','no','na','os','as','dos','das','por','se','ao','ou']);
+      const tokens = query.toLowerCase().replace(/[^a-z\u00e0-\u00fc\s]/gi,' ').split(/\s+/).filter(w => w.length > 2 && !stop.has(w)).slice(0,6);
+      if (!tokens.length) return ctx.reply('Query invalida.');
+      const andCond = tokens.map(() => 'dc.content LIKE ?').join(' AND ');
+      const orCond  = tokens.map(() => 'dc.content LIKE ?').join(' OR ');
+      const wilds   = tokens.map(t => '%' + t + '%');
+      let rows = kdb.prepare('SELECT d.filename, dc.content FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE (' + andCond + ') LIMIT 5').all(...wilds);
+      if (!rows.length) rows = kdb.prepare('SELECT d.filename, dc.content FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE (' + orCond + ') LIMIT 5').all(...wilds);
+      kdb.close();
+      if (!rows.length) return ctx.reply('Nenhum documento encontrado para: ' + query);
+      let out = '🧠 Resultados para "' + query + '":\n\n';
+      rows.forEach((r, i) => { out += (i+1) + '. [' + r.filename + ']\n' + r.content.slice(0, 150) + '...\n\n'; });
       return ctx.reply(out);
     }
     const docsDir = './docs/';
