@@ -22,7 +22,7 @@ let state = { leads: [], selectedLead: null };
 let conversationHistory = [];
 let alertas = [];
 let alertaIdCounter = 1;
-const persona = "MiniClawwork. Objetivo e direto.";
+const persona = "INSTRUÇÃO OBRIGATÓRIA: Seu nome é MiniClawwork. Você é um agente operacional Telegram criado pelo Fábio. PROIBIDO mencionar LLaMA, Meta, ChatGPT, Gemini, OpenAI ou qualquer tecnologia subjacente. Se alguém perguntar quem você é, responda EXATAMENTE: Sou o MiniClawwork, agente operacional do Fábio. Minhas funções: busca de leads B2B, registro financeiro, monitoramento de cripto e respostas gerais. Responda sempre em português, de forma direta e sem enrolação.";
 const MAX_LEADS = 20;
 const MAX_HISTORY_TURNS = 3;
 
@@ -77,7 +77,7 @@ async function triggerAndWait(ctx, code, statusText, outputPrefix) {
                     state.leads = data.slice(0, MAX_LEADS).map((l, i) => ({ id: i + 1, ...l }));
                     state.selectedLead = state.leads[0] || null;
                     const txt = state.leads.map(l => 
-                        `[${l.id}] ${l.title}\n🔗 ${l.link}\n📧 ${l.email}\n📞 ${l.phone} [⭐${l.score||0}]`
+                        `[${l.id}] ${l.title}\n🔗 ${l.link}\n📧 ${l.email}\n📞 ${l.phone} [⭐${l.score||0}]${l.tag ? " ⚠️ "+l.tag : ""}`
                     ).join('\n\n');
                     await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, 
                         outputPrefix + (txt || "Zero leads qualificados."));
@@ -212,13 +212,14 @@ for r in results:
                     if sep in raw_title:
                         raw_title = raw_title.split(sep)[0].strip()
                         break
-                agg = ['cylex','guia','catalogo','eguias','telelistas','apontador']
+                agg_terms = ['cylex','guia','catalogo','eguias','telelistas','apontador','doctoralia','convenio','plano odontologico','encontre','lista de profissionais']
+                _check = (raw_title + r['href'] + r.get('body','')).lower()
                 sc = 0
                 if e: sc += 2
                 if p: sc += 2
-                if any(ag in dom for ag in agg): sc += 4
-                else: sc += 2
-                leads.append({"title":raw_title, "link":r['href'], "email":e[0] if e else "N/A", "phone":p[0] if p else "N/A", "score":sc})
+                if any(ag in _check for ag in agg_terms): sc -= 2; tag = 'possivel agregador'
+                else: sc += 2; tag = ''
+                leads.append({"title":raw_title, "link":r['href'], "email":e[0] if e else "N/A", "phone":p[0] if p else "N/A", "score":sc, "tag":tag})
                 seen.add(dom)
     except Exception as ex:
         pass
@@ -334,7 +335,7 @@ bot.on('text', async (ctx) => {
     if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
     let m;
 
-    if (tl.includes("quem") && tl.includes("voc")) { conversationHistory = []; return ctx.reply(persona); }
+    if (tl.includes("quem") && tl.includes("voc")) { conversationHistory = []; return ctx.reply("Sou o MiniClawwork, agente operacional do Fabio. Funcoes: busca de leads B2B, registro financeiro, monitoramento de cripto e respostas gerais."); }
     if (tl === "status") {
         conversationHistory = [];
         return ctx.reply(`Leads: ${state.leads.length}/${MAX_LEADS} | ${state.selectedLead?.title || 'Nenhum'}\nAlertas: ${alertas.length}`);

@@ -119,15 +119,17 @@ function parseCommand(args) {
   if (['receita', 'income', 'entrada'].includes(action)) {
     const amount = parseFloat(parts[1]);
     if (isNaN(amount)) return { error: 'Valor inválido. Ex: /fin receita 500 freelance' };
-    const category = (parts[2] || 'geral').replace(/^"|"$/g, '');
-    const description = parts.slice(3).join(' ').replace(/^"|"$/g, '');
+    const catMatch = args.match(/"([^"]+)"/);
+    const category = catMatch ? catMatch[1] : (parts[2] || 'geral');
+    const description = catMatch ? '' : parts.slice(3).join(' ').replace(/^"|"$/g, '');
     return { action: 'add', type: 'income', amount, category, description };
   }
   if (['gasto', 'expense', 'saida', 'despesa'].includes(action)) {
     const amount = parseFloat(parts[1]);
     if (isNaN(amount)) return { error: 'Valor inválido. Ex: /fin gasto 150 alimentacao' };
-    const category = (parts[2] || 'geral').replace(/^"|"$/g, '');
-    const description = parts.slice(3).join(' ').replace(/^"|"$/g, '');
+    const catMatch = args.match(/"([^"]+)"/);
+    const category = catMatch ? catMatch[1] : (parts[2] || 'geral');
+    const description = catMatch ? '' : parts.slice(3).join(' ').replace(/^"|"$/g, '');
     return { action: 'add', type: 'expense', amount, category, description };
   }
   if (!action) return { error: `*\/fin* — Finanças Pessoais\nUse:\n• \/fin saldo\n• \/fin lista\n• \/fin receita 500 freelance\n• \/fin gasto 150 alimentacao` };

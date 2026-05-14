@@ -21,15 +21,17 @@ const detectIntent = (t) => {
 const getMaxTokens = (t) => ({ factual: 400, math: 250, chat: 300 }[detectIntent(t)] ?? 250);
 
 const PROVIDERS = [
+  ['https://openrouter.ai/api/v1/chat/completions',          'OPENROUTER_API_KEY', 'mistralai/mistral-7b-instruct:free'],
   ['https://api.groq.com/openai/v1/chat/completions',        'GROQ_API_KEY',       'llama-3.3-70b-versatile'],
   ['https://integrate.api.nvidia.com/v1/chat/completions',   'NVIDIA_API_KEY',     'meta/llama-3.3-70b-instruct'],
   ['https://openrouter.ai/api/v1/chat/completions',          'OPENROUTER_API_KEY', 'meta-llama/llama-3.3-70b-instruct:free'],
+  ['https://openrouter.ai/api/v1/chat/completions',          'OPENROUTER_API_KEY', 'mistralai/mistral-7b-instruct'],
 ];
 
 const askLLM = async (t, { history, persona, maxHistoryTurns }) => {
   history.push({ role: 'user', content: t });
   const recent = history.slice(-(maxHistoryTurns * 2));
-  const msgs = [{ role: 'system', content: persona }, ...recent];
+  const msgs = [{ role: "system", content: persona }, ...recent];
   const maxTok = getMaxTokens(t);
 
   const call = async (url, key, model) => {
