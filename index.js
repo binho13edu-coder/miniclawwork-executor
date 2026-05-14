@@ -77,7 +77,7 @@ async function triggerAndWait(ctx, code, statusText, outputPrefix) {
                     state.leads = data.slice(0, MAX_LEADS).map((l, i) => ({ id: i + 1, ...l }));
                     state.selectedLead = state.leads[0] || null;
                     const txt = state.leads.map(l => 
-                        `[${l.id}] ${l.title}\n🔗 ${l.link}\n📧 ${l.email}\n📞 ${l.phone}`
+                        `[${l.id}] ${l.title}\n🔗 ${l.link}\n📧 ${l.email}\n📞 ${l.phone} [⭐${l.score||0}]`
                     ).join('\n\n');
                     await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, 
                         outputPrefix + (txt || "Zero leads qualificados."));
@@ -205,10 +205,23 @@ for r in results:
             if geo_palavras:
                 geo_ok = any(gp in r['title'].lower() or gp in u or gp in html_lower for gp in geo_palavras)
             if not geo_ok:
+                pass
             elif e or p:
-                leads.append({"title":r['title'], "link":r['href'], "email":e[0] if e else "N/A", "phone":p[0] if p else "N/A"})
+                raw_title = r['title']
+                for sep in [' - ',' | ',' – ']:
+                    if sep in raw_title:
+                        raw_title = raw_title.split(sep)[0].strip()
+                        break
+                agg = ['cylex','guia','catalogo','eguias','telelistas','apontador']
+                sc = 0
+                if e: sc += 2
+                if p: sc += 2
+                if any(ag in dom for ag in agg): sc += 4
+                else: sc += 2
+                leads.append({"title":raw_title, "link":r['href'], "email":e[0] if e else "N/A", "phone":p[0] if p else "N/A", "score":sc})
                 seen.add(dom)
     except Exception as ex:
+        pass
     if len(leads) >= 5: break
 print(json.dumps(leads))`;
     triggerAndWait(ctx, py, "🔎 Scanner...", "🎯 Leads:\n\n");
