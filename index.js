@@ -12,6 +12,7 @@ const cryptoSkill = require('./skills/crypto');
 const llmSkill    = require('./skills/llm');
 const coreRouter = require('./core/router');
 const { handleFinance } = require('./core/finance');
+const { memory } = require('./core/memory');
 const { ingestDocument } = require('./core/intake.js');
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN, { handlerTimeout: 300000 });
@@ -291,6 +292,14 @@ setInterval(verificarAlertas, 2 * 60 * 1000);
 
 bot.command('ctx', async (ctx) => {
   try {
+    const query = ctx.message.text.replace('/ctx', '').trim();
+    if (query) {
+      const hits = memory.recallHybrid(String(ctx.from.id), query, { limit: 5 });
+      if (!hits.length) return ctx.reply('Nenhuma memoria encontrada para: ' + query);
+      let out = '🧠 Memorias relevantes para "' + query + '":\n\n';
+      hits.forEach((h, i) => { out += (i+1) + '. [' + h.score + '] ' + h.content.slice(0, 120) + '\n'; });
+      return ctx.reply(out);
+    }
     const docsDir = './docs/';
     if (!fs.existsSync(docsDir)) return ctx.reply('Nenhum contexto salvo. Envie .md/.txt/.json primeiro!');
     const files = fs.readdirSync(docsDir).filter(f => f.endsWith('.json') && !f.includes('_'));
@@ -298,7 +307,7 @@ bot.command('ctx', async (ctx) => {
     const metas = files.slice(-5).map(f => {
       try { return JSON.parse(fs.readFileSync('./docs/' + f, 'utf8')); } catch(e) { return null; }
     }).filter(Boolean);
-    let list = '📚 Contextos Salvos:' + '\n\n';
+    let list = '📚 Contextos Salvos:\n\n';
     metas.forEach(m => { list += '• ' + m.id + ' - ' + m.name + '\n'; });
     list += '\nEnvie mais docs ou use o ID.';
     await ctx.reply(list);
