@@ -160,6 +160,79 @@ class MemoryStore {
     }));
   }
 
+  _tokenize(query) {
+    const stop = new Set(['de','a','o','e','que','um','uma','para','com','em','no','na','os','as','dos','das','por','se','ao','ou']);
+    return query.toLowerCase()
+      .replace(/[^a-z\u00e0-\u00fc\s]/gi, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !stop.has(w))
+      .slice(0, 6);
+  }
+
+  _recencyWeight(createdAt) {
+    const age = now() - createdAt;
+    if (age <= 7  * 86400) return 1.0;
+    if (age <= 30 * 86400) return 0.5;
+    if (age <= 90 * 86400) return 0.2;
+    return 0;
+  }
+
+  recallHybrid(userId, query, opts = {}) {
+    const limit  = opts.limit ?? MAX_RECALL;
+    const ts     = now();
+    const uid    = String(userId);
+    const tokens = this._tokenize(query);
+    if (!tokens.length) return this.recall(userId, { limit });
+    const _fetch = (mode) => {
+      const joinOp   = mode === 'AND' ? ' AND ' : ' OR ';
+      const hintPart = tokens.map(() => 'embedding_hint LIKE ?').join(joinOp);
+      const contPart = tokens.map(() => 'content LIKE ?').join(joinOp);
+      const wilds    = tokens.map(t => `%${t}%`);
+      const sql = `
+        SELECT id, role, content, embedding_hint, importance, created_at
+        FROM memories
+        WHERE user_id = ? AND is_archived = 0
+          AND (created_at + ttl_days * 86400) > ?
+          AND ((${hintPart}) OR (${contPart}))
+        LIMIT ?
+      `;
+      return this._db.prepare(sql).all(uid, ts, ...wilds, ...wilds, limit * 3);
+    };
+
+    let rows = _fetch('AND');
+    if (!rows.length) rows = _fetch('OR');
+    if (!rows.length) return this.recall(userId, { limit });
+
+    const scored = rows.map(r => {
+      const hint = (r.embedding_hint || '').toLowerCase();
+      const body = r.content.toLowerCase();
+      let hh = 0, ch = 0;
+      for (const t of tokens) {
+        if (hint.includes(t)) hh++;
+        if (body.includes(t)) ch++;
+      }
+      return { ...r, _score: hh * 1.5 + ch * 0.7 + r.importance + this._recencyWeight(r.created_at) };
+    });
+
+    scored.sort((a, b) => b._score - a._score);
+    const top = scored.slice(0, limit);
+
+    const updateBatch = this._db.transaction((ids) => {
+      const ts2 = now();
+      for (const id of ids) this._stmts.updateAccessed.run({ id, ts: ts2 });
+    });
+    updateBatch(top.map(r => r.id));
+
+    return top.map(r => ({
+      id:        r.id,
+      role:      r.role,
+      content:   r.content,
+      importance: r.importance,
+      score:     parseFloat(r._score.toFixed(3)),
+      createdAt: new Date(r.created_at * 1000).toISOString(),
+    }));
+  }
+
   recallAsMessages(userId, opts = {}) {
     return this.recall(userId, opts).map(m => ({ role: m.role, content: m.content }));
   }
