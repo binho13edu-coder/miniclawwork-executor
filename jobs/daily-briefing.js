@@ -1,0 +1,141 @@
+'use strict';
+require('dotenv').config();
+const axios    = require('axios');
+const Database = require('better-sqlite3');
+const { Telegraf } = require('telegraf');
+const { store }    = require('../core/finance');
+
+const JOBS_DB  = './data/jobs.db';
+const JOB_NAME = 'daily-briefing';
+const TEST     = process.argv.includes('--test');
+
+const db = new Database(JOBS_DB);
+db.exec(`CREATE TABLE IF NOT EXISTS jobs (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL,
+  last_run   TEXT,
+  status     TEXT,
+  locked     INTEGER DEFAULT 0,
+  error      TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+)`);
+
+function acquireLock() {
+  const row   = db.prepare('SELECT locked, last_run FROM jobs WHERE name=?').get(JOB_NAME);
+  const today = new Date().toISOString().slice(0, 10);
+  if (row) {
+    if (row.locked === 1)                                        return false;
+    if (!TEST && row.last_run && row.last_run.startsWith(today)) return false;
+    db.prepare('UPDATE jobs SET locked=1,status=?,updated_at=CURRENT_TIMESTAMP WHERE name=?')
+      .run('running', JOB_NAME);
+  } else {
+    db.prepare('INSERT INTO jobs (name,locked,status) VALUES (?,1,?)').run(JOB_NAME,'running');
+  }
+  return true;
+}
+
+function releaseLock(status, err = null) {
+  if (TEST || status !== 'ok') {
+    db.prepare('UPDATE jobs SET locked=0,status=?,error=?,updated_at=CURRENT_TIMESTAMP WHERE name=?')
+      .run(status, err, JOB_NAME);
+    return;
+  }
+
+  db.prepare('UPDATE jobs SET locked=0,status=?,last_run=?,error=?,updated_at=CURRENT_TIMESTAMP WHERE name=?')
+    .run(status, new Date().toISOString(), err, JOB_NAME);
+}
+
+async function fetchBTC() {
+  try {
+    const r = await axios.get(
+      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl,usd&include_24hr_change=true',
+      { timeout: 8000 }
+    );
+    const d   = r.data.bitcoin;
+    const brl = d.brl.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    const chg = d.brl_24h_change.toFixed(2);
+    return `₿ BTC: R$ ${brl} | 24h: ${chg >= 0 ? '📈' : '📉'} ${chg}%`;
+  } catch { return '₿ BTC: indisponível'; }
+}
+
+async function fetchDolar() {
+  try {
+    const r = await axios.get('https://open.er-api.com/v6/latest/USD', { timeout: 8000 });
+    return `💵 Dólar: R$ ${r.data.rates.BRL.toFixed(4)}`;
+  } catch { return '💵 Dólar: indisponível'; }
+}
+
+function getFinance() {
+  try {
+    const b = store.balance();
+    return [
+      `💰 Receitas: R$ ${b.income.toFixed(2)}`,
+      `💸 Despesas: R$ ${b.expense.toFixed(2)}`,
+      `${b.balance >= 0 ? '🟢' : '🔴'} Saldo: R$ ${b.balance.toFixed(2)}`
+    ].join('\n');
+  } catch { return '💰 Finanças: indisponível'; }
+}
+
+function getContext() {
+  try {
+    const kdb  = new Database('./data/knowledge/documents.db', { readonly: true });
+    const rows = kdb.prepare(`
+      SELECT DISTINCT d.filename
+      FROM document_chunks dc
+      JOIN documents d ON dc.document_id = d.id
+      ORDER BY dc.id DESC LIMIT 5
+    `).all();
+    kdb.close();
+    if (!rows.length) return '📚 Contexto: sem documentos';
+    return '📚 Docs recentes:\n' + rows.map(r => `• ${r.filename.slice(0,50)}`).join('\n');
+  } catch { return '📚 Contexto: indisponível'; }
+}
+
+async function buildBriefing() {
+  const now          = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  const [btc, dolar] = await Promise.all([fetchBTC(), fetchDolar()]);
+  return [
+    `📌 *Briefing Diário — MiniClawwork*`,
+    `🕐 ${now}`,
+    ``,
+    `*1\\. Finanças*`,
+    getFinance(),
+    ``,
+    `*2\\. Cripto*`,
+    btc,
+    dolar,
+    ``,
+    `*3\\. Contexto*`,
+    getContext(),
+    ``,
+    `*4\\. Sistema*`,
+    `✅ PM2 online | SQLite OK | Bot ativo`,
+  ].join('\n');
+}
+
+async function run() {
+  if (!acquireLock()) {
+    console.log('⏭  Job já executado hoje ou locked. Abortando.');
+    return;
+  }
+  try {
+    const msg = await buildBriefing();
+    if (TEST) {
+      console.log('\n--- BRIEFING TEST ---\n');
+      console.log(msg.replace(/\\/g, '').replace(/\*/g, ''));
+      console.log('--- FIM ---\n');
+    } else {
+      const tg = new Telegraf(process.env.TELEGRAM_TOKEN);
+      await tg.telegram.sendMessage(process.env.OWNER_ID, msg);
+    }
+    releaseLock('ok');
+    console.log('✅ Briefing concluído.');
+  } catch (err) {
+    releaseLock('error', err.message);
+    console.error('❌ Briefing falhou:', err.message);
+    process.exit(1);
+  }
+}
+
+run();
