@@ -7,3 +7,12 @@ res.zip
 *.corrompido
 .aider*
 ecosystem.config.js
+
+# SQLite runtime files
+*.db-shm
+*.db-wal
+data/jobs.db
+
+# Local backups / scratch
+*.bak*
+index.js.bak*
