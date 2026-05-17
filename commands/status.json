@@ -1,0 +1,8 @@
+{
+  "description": "Consulta saude do sistema em producao",
+  "trigger": "/status",
+  "skill": "status",
+  "args": { "pattern": "^$" },
+  "soak": false,
+  "version": "7.0"
+}

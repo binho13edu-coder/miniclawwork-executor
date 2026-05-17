@@ -12,6 +12,7 @@ const cryptoSkill = require('./skills/crypto');
 const llmSkill    = require('./skills/llm');
 const coreRouter = require('./core/router');
 const { handleFinance } = require('./core/finance');
+const { buildStatus } = require('./skills/status');
 const { memory } = require('./core/memory');
 const { ingestDocument } = require('./core/intake.js');
 
@@ -365,6 +366,7 @@ bot.on('text', async (ctx) => {
     if (tl === '/dominancia' || tl === '/dom') return dominanciaCripto(ctx);
 
     if (tl === '/fin' || tl.startsWith('/fin ')) return handleFinance(ctx, tl.replace('/fin', '').trim());
+    if (tl === '/status') return ctx.reply(buildStatus());
     if ((m = tl.match(/^\/alerta\s+(\w+)\s*([<>])\s*([\d.,]+)/))) {
         const ativo = m[1].toUpperCase(), op = m[2];
         const val = parseFloat(m[3].replace(/\./g,'').replace(',','.'));

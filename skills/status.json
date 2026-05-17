@@ -1,0 +1,7 @@
+{
+  "name": "status",
+  "handler": "skills/status.js",
+  "exports": ["buildStatus"],
+  "db": null,
+  "soak": false
+}
