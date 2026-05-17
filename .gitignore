@@ -19,3 +19,8 @@ index.js.bak*
 
 # Ingested context files
 docs/
+
+# V6.7 backups e logs operacionais
+backups/
+logs/
+
