@@ -1,0 +1,7 @@
+{
+  "name": "leads",
+  "handler": "index.js",
+  "exports": ["runLeads"],
+  "db": null,
+  "soak": true
+}

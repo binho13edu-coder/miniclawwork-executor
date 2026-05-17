@@ -1,0 +1,8 @@
+{
+  "description": "Registro e consulta financeira pessoal",
+  "trigger": "/fin",
+  "skill": "finance",
+  "args": { "pattern": "^(saldo|lista|receita|gasto)?\\s*(.*)$" },
+  "soak": true,
+  "version": "6.4"
+}

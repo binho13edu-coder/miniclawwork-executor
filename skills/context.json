@@ -1,0 +1,7 @@
+{
+  "name": "context",
+  "handler": "core/memory.js",
+  "exports": ["recallHybrid"],
+  "db": "data/knowledge/documents.db",
+  "soak": true
+}

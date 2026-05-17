@@ -1,0 +1,8 @@
+{
+  "name": "finance",
+  "handler": "core/finance.js",
+  "exports": ["handleFinance"],
+  "db": "data/finance/transactions.db",
+  "schema": "core/finance/schema.sql",
+  "soak": true
+}

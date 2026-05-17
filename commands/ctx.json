@@ -1,0 +1,8 @@
+{
+  "description": "Busca contextual em documentos ingeridos",
+  "trigger": "/ctx",
+  "skill": "context",
+  "args": { "pattern": "^(.*)$" },
+  "soak": true,
+  "version": "6.5"
+}

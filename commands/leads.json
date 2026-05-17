@@ -1,0 +1,8 @@
+{
+  "description": "Busca e scoring de leads B2B",
+  "trigger": "/leads",
+  "skill": "leads",
+  "args": { "pattern": "^(.+)\\s+em\\s+(.+)$" },
+  "soak": true,
+  "version": "6.4"
+}
