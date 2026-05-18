@@ -61,8 +61,14 @@ async function fetchBTC() {
 
 async function fetchDolar() {
   try {
-    const r = await axios.get('https://open.er-api.com/v6/latest/USD', { timeout: 8000 });
-    return `💵 Dólar: R$ ${r.data.rates.BRL.toFixed(4)}`;
+    const r = await axios.get(
+      'https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=brl&include_24hr_change=true',
+      { timeout: 8000 }
+    );
+    const d   = r.data.tether;
+    const brl = d.brl.toLocaleString('pt-BR', { minimumFractionDigits: 4 });
+    const chg = d.brl_24h_change.toFixed(2);
+    return '💵 Dólar: R$ ' + brl + ' | 24h: ' + (chg >= 0 ? '📈' : '📉') + ' ' + chg + '%';
   } catch { return '💵 Dólar: indisponível'; }
 }
 
@@ -93,7 +99,7 @@ function getContext() {
 }
 
 async function buildBriefing() {
-  const now          = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); const now = pad(d.getDate()) + '/' + pad(d.getMonth()+1) + '/' + d.getFullYear() + ', ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   const [btc, dolar] = await Promise.all([fetchBTC(), fetchDolar()]);
   return [
     `📌 *Briefing Diário — MiniClawwork*`,
@@ -102,7 +108,7 @@ async function buildBriefing() {
     `*1\\. Finanças*`,
     getFinance(),
     ``,
-    `*2\\. Cripto*`,
+    `*2\\. Cripto e Dólar*`,
     btc,
     dolar,
     ``,
