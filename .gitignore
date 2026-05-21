@@ -26,3 +26,8 @@ logs/
 
 context-snapshot.md
 tools/leak-auditor.js
+
+# V7.5 cleanup — backups e databases runtime
+*.bkp*
+data/*.db
+data/**/*.db
