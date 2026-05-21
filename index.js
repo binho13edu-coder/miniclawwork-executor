@@ -15,6 +15,10 @@ const { handleFinance } = require('./core/finance');
 const { buildStatus } = require('./skills/status');
 const { memory } = require('./core/memory');
 const { ingestDocument } = require('./core/intake.js');
+const { execSync } = require('child_process');
+const { guard } = require('./core/command-guard');
+const helpManifest = require('./core/help-manifest');
+const corrections = require('./core/corrections');
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN, { handlerTimeout: 300000 });
 const OWNER_ID = parseInt(process.env.OWNER_ID);
@@ -399,6 +403,44 @@ bot.on('text', async (ctx) => {
     if (tl === '/dolar') return triggerAndWait(ctx, `import requests\nprint(round(requests.get("https://open.er-api.com/v6/latest/USD").json()['rates']['BRL'],4))`, "💵...", "R$ ");
     if (tl === '/btc') return triggerAndWait(ctx, `import requests\nv=requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl").json()['bitcoin']['brl']\nprint(f"R$ {v:,.0f}".replace(",","."))`, "₿...", "");
 
+    // V7.5 handlers
+    if (tl === '/help' || tl.startsWith('/help ')) {
+        const query = tl.replace('/help', '').trim();
+        if (!query) {
+            const byCat = helpManifest.listByCategory();
+            let text = '📖 Comandos disponíveis:\n\n';
+            for (const [cat, cmds] of Object.entries(byCat)) {
+                text += `*${cat}*\n${cmds.map(c => `  /${c.name} — ${c.description}`).join('\n')}\n\n`;
+            }
+            return ctx.reply(text);
+        }
+        const results = helpManifest.search(query);
+        if (!results.length) return ctx.reply('Nenhum comando encontrado.');
+        return ctx.reply(results.map(c => `/${c.name} — ${c.description}`).join('\n'));
+    }
+    if (tl === '/git' || tl.startsWith('/git ')) {
+        const guardResult = guard(ctx, '/git');
+        if (guardResult.blocked) {
+            return ctx.reply(`⛔ ${guardResult.reason === 'shell_injection_detected' ? 'Caracteres perigosos detectados.' : 'Comando inválido.'}`);
+        }
+        const subcmd = guardResult.sanitized.replace('/git', '').trim();
+        if (!subcmd) return ctx.reply('Uso: /git <comando>');
+        try {
+            const output = execSync(`git ${subcmd}`, { cwd: '/home/opc/miniclawwork-executor', encoding: 'utf8', timeout: 10000 });
+            return ctx.reply(`\`\`\`\n${output.slice(0, 4000)}\n\`\`\``, { parse_mode: 'Markdown' });
+        } catch (e) {
+            return ctx.reply(`❌ Erro: ${e.message}`);
+        }
+    }
+    if (tl === '/corrigir' || tl.startsWith('/corrigir ')) {
+        const text = tl.replace('/corrigir', '').trim();
+        if (!text) return ctx.reply('Uso: /corrigir <texto da correção>');
+        const db = new (require('better-sqlite3'))('./data/knowledge/documents.db');
+        corrections.init(db);
+        const result = corrections.saveCorrection(text, db);
+        db.close();
+        return ctx.reply(result.success ? `✅ Correção #${result.id} gravada.` : `❌ Erro: ${result.error}`);
+    }
     ctx.reply(await askLLM(t));
 });
 
