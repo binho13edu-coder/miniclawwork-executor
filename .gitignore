@@ -25,3 +25,4 @@ backups/
 logs/
 
 context-snapshot.md
+tools/leak-auditor.js
