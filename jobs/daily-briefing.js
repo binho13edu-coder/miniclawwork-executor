@@ -99,7 +99,7 @@ function getContext() {
 }
 
 async function buildBriefing() {
-  const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); const now = pad(d.getDate()) + '/' + pad(d.getMonth()+1) + '/' + d.getFullYear() + ', ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); const brDate = new Date(d.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })); const now = pad(brDate.getDate()) + '/' + pad(brDate.getMonth()+1) + '/' + brDate.getFullYear() + ', ' + pad(brDate.getHours()) + ':' + pad(brDate.getMinutes());
   const [btc, dolar] = await Promise.all([fetchBTC(), fetchDolar()]);
   return [
     `📌 *Briefing Diário — MiniClawwork*`,
