@@ -66,7 +66,7 @@ async function triggerAndWait(ctx, code, statusText, outputPrefix) {
                 owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, 
                 artifact_id: arts.data.artifacts[0].id, archive_format: 'zip' 
             });
-            const res = await axios.get(dl.url, { responseType: 'arraybuffer' });
+            const res = await axios.get(dl.url, { responseType: 'arraybuffer', timeout: 30000 });
             fs.writeFileSync('res.zip', Buffer.from(res.data));
             const out = new AdmZip('res.zip').readAsText('output.txt');
             
