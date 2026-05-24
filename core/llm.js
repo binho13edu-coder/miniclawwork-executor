@@ -170,4 +170,13 @@ class LLMRouter {
 }
 
 const router = new LLMRouter();
-module.exports = { LLMRouter, router, CircuitBreaker, TokenBucket };
+module.exports = { LLMRouter, router, CircuitBreaker, TokenBucket, ask };
+
+async function ask(prompt, options = {}) {
+  try {
+    const result = await router.chat([{ role: 'user', content: prompt }], options);
+    return result.content;
+  } catch (e) {
+    return "Nao consegui processar agora. Tente em instantes.";
+  }
+}
