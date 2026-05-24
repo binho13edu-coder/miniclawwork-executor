@@ -169,12 +169,41 @@ class LLMRouter {
   }
 }
 
+// === SOUL.md injection (V80-NEW-G) ===
+let soulPromptCache = null;
+
+function getSoulPrompt() {
+  if (soulPromptCache !== null) return soulPromptCache;
+  try {
+    const soulPath = require('path').join(__dirname, '..', 'SOUL.md');
+    if (fs.existsSync(soulPath)) {
+      soulPromptCache = fs.readFileSync(soulPath, 'utf8');
+    } else {
+      console.warn('[SOUL] SOUL.md not found. Continuing without injection.');
+      soulPromptCache = '';
+    }
+  } catch (error) {
+    console.warn('[SOUL] Error reading SOUL.md:', error.message);
+    soulPromptCache = '';
+  }
+  return soulPromptCache;
+}
+
+try { getSoulPrompt(); } catch (e) { console.warn('[SOUL] Boot cache failed:', e.message); }
+// =====================================
+
 const router = new LLMRouter();
 module.exports = { LLMRouter, router, CircuitBreaker, TokenBucket, ask };
 
 async function ask(prompt, options = {}) {
   try {
-    const result = await router.chat([{ role: 'user', content: prompt }], options);
+    const messages = [];
+    const soulPrompt = getSoulPrompt();
+    if (soulPrompt) {
+      messages.push({ role: 'system', content: soulPrompt });
+    }
+    messages.push({ role: 'user', content: prompt });
+    const result = await router.chat(messages, options);
     return result.content;
   } catch (e) {
     return "Nao consegui processar agora. Tente em instantes.";
