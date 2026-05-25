@@ -19,6 +19,7 @@ const { execSync } = require('child_process');
 const { guard, throttle } = require('./core/command-guard');
 const helpManifest = require('./core/help-manifest');
 const corrections = require('./core/corrections');
+const agents = require('./core/agents');
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN, { handlerTimeout: 300000 });
 const OWNER_ID = parseInt(process.env.OWNER_ID);
@@ -454,7 +455,7 @@ bot.on('text', async (ctx) => {
         db.close();
         return ctx.reply(result.success ? `✅ Correção #${result.id} gravada.` : `❌ Erro: ${result.error}`);
     }
-    ctx.reply(await askLLM(t));
+    ctx.reply(await agents.run(t, { history: conversationHistory, persona, maxHistoryTurns: MAX_HISTORY_TURNS }));
 });
 
 
