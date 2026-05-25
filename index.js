@@ -483,4 +483,7 @@ bot.on('document', async (ctx) => {
   }
 });
 
-bot.launch({ dropPendingUpdates: true }).then(() => console.log("MiniClawwork v3.9 online"));
+bot.launch({ dropPendingUpdates: true }).then(() => {
+  console.log("MiniClawwork v3.9 online");
+  require('./jobs/watchdog').start(bot);
+});
