@@ -5,10 +5,12 @@ const Database = require('better-sqlite3');
 const { Telegraf } = require('telegraf');
 const { store }    = require('../core/finance');
 
+const { preflight } = require('../core/db-preflight');
 const JOBS_DB  = './data/jobs.db';
 const JOB_NAME = 'daily-briefing';
 const TEST     = process.argv.includes('--test');
 
+if (!preflight(JOBS_DB, JOB_NAME)) { console.error('[daily-briefing] DB preflight failed. Aborting.'); process.exit(1); }
 const db = new Database(JOBS_DB);
 db.exec(`CREATE TABLE IF NOT EXISTS jobs (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
