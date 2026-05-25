@@ -193,7 +193,7 @@ try { getSoulPrompt(); } catch (e) { console.warn('[SOUL] Boot cache failed:', e
 // =====================================
 
 const router = new LLMRouter();
-module.exports = { LLMRouter, router, CircuitBreaker, TokenBucket, ask };
+module.exports = { LLMRouter, router, CircuitBreaker, TokenBucket, ask, getSoulPrompt };
 
 async function ask(prompt, options = {}) {
   try {
