@@ -1,4 +1,27 @@
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+
+// === SOUL.md loader (V80-NEW-G) ===
+let soulCache = null;
+function loadSoul() {
+  if (soulCache !== null) return soulCache;
+  try {
+    const soulPath = path.join(__dirname, '..', 'SOUL.md');
+    if (fs.existsSync(soulPath)) {
+      soulCache = fs.readFileSync(soulPath, 'utf8');
+    } else {
+      console.warn('[SOUL] SOUL.md not found. Continuing without injection.');
+      soulCache = '';
+    }
+  } catch (error) {
+    console.warn('[SOUL] Error reading SOUL.md:', error.message);
+    soulCache = '';
+  }
+  return soulCache;
+}
+loadSoul();
+// ===================================
 
 const FACTUAL_PATTERNS = [
   /\bquem\b/,/\bonde\b/,/\bo que é\b/,/\bme fale\b/,/\bconte\b/,
