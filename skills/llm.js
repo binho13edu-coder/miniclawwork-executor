@@ -31,7 +31,9 @@ const PROVIDERS = [
 const askLLM = async (t, { history, persona, maxHistoryTurns }) => {
   history.push({ role: 'user', content: t });
   const recent = history.slice(-(maxHistoryTurns * 2));
-  const msgs = [{ role: "system", content: persona }, ...recent];
+  const soul = loadSoul();
+  const systemContent = soul ? (soul + "\n\n---\n\n" + persona) : persona;
+  const msgs = [{ role: "system", content: systemContent }, ...recent];
   const maxTok = getMaxTokens(t);
 
   const call = async (url, key, model) => {
