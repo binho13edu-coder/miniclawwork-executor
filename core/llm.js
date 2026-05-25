@@ -3,6 +3,8 @@
  * Multi-LLM router com Circuit Breaker + Exponential Backoff + Token Bucket
  */
 
+const fs = require('fs');
+
 const PROVIDERS = {
   groq: {
     name: 'groq', baseURL: 'https://api.groq.com/openai/v1',
