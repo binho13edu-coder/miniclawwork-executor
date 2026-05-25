@@ -16,7 +16,7 @@ const { buildStatus } = require('./skills/status');
 const { memory } = require('./core/memory');
 const { ingestDocument } = require('./core/intake.js');
 const { execSync } = require('child_process');
-const { guard } = require('./core/command-guard');
+const { guard, throttle } = require('./core/command-guard');
 const helpManifest = require('./core/help-manifest');
 const corrections = require('./core/corrections');
 
@@ -296,6 +296,8 @@ setInterval(verificarAlertas, 2 * 60 * 1000);
 
 
 bot.command('ctx', async (ctx) => {
+  const tResult = throttle(ctx.from.id, '/ctx');
+  if (tResult.throttled) { return ctx.reply('⏳ Aguarde ' + tResult.waitSeconds + 's antes de usar /ctx novamente.'); }
   try {
     const query = ctx.message.text.replace('/ctx', '').trim();
     if (query) {
@@ -357,6 +359,17 @@ bot.on('text', async (ctx) => {
     const t = ctx.message.text;
     const tl = t.toLowerCase().trim();
     if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+
+  // === Throttle helper (V80-NEW-B) ===
+  function _checkThrottle(cmd) {
+    const tResult = throttle(ctx.from.id, cmd);
+    if (tResult.throttled) {
+      ctx.reply('⏳ Aguarde ' + tResult.waitSeconds + 's antes de usar ' + cmd + ' novamente.');
+      return true;
+    }
+    return false;
+  }
+  // ===================================
     let m;
 
     if (tl.includes("quem") && tl.includes("voc")) { conversationHistory = []; return ctx.reply("Sou o MiniClawwork, agente operacional do Fabio. Funcoes: busca de leads B2B, registro financeiro, monitoramento de cripto e respostas gerais."); }
@@ -369,8 +382,8 @@ bot.on('text', async (ctx) => {
     if ((m = tl.match(/^\/(analise|analisa)\s+(\w+)/))) return analiseCripto(ctx, m[2]);
     if (tl === '/dominancia' || tl === '/dom') return dominanciaCripto(ctx);
 
-    if (tl === '/fin' || tl.startsWith('/fin ')) return handleFinance(ctx, tl.replace('/fin', '').trim());
-    if (tl === '/status') return ctx.reply(buildStatus());
+    if (tl === '/fin' || tl.startsWith('/fin ')) { if (_checkThrottle('/fin')) return; return handleFinance(ctx, tl.replace('/fin', '').trim()); }
+    if (tl === '/status') { if (_checkThrottle('/status')) return; return ctx.reply(buildStatus()); }
     if ((m = tl.match(/^\/alerta\s+(\w+)\s*([<>])\s*([\d.,]+)/))) {
         const ativo = m[1].toUpperCase(), op = m[2];
         const val = parseFloat(m[3].replace(/\./g,'').replace(',','.'));
@@ -398,13 +411,13 @@ bot.on('text', async (ctx) => {
         return ctx.reply(`Score: ${score}/100. ${score > 50 ? "Contato direto ok." : "Lead frio."}`);
     }
 
-    if (tl.startsWith('/leads ')) return runLeads(ctx, t.slice(7));
+    if (tl.startsWith('/leads ')) { if (_checkThrottle('/leads')) return; return runLeads(ctx, t.slice(7)); }
     if (tl.startsWith('/exec ')) return triggerAndWait(ctx, t.slice(6), "⚙️...", "");
     if (tl === '/dolar') return triggerAndWait(ctx, `import requests\nprint(round(requests.get("https://open.er-api.com/v6/latest/USD").json()['rates']['BRL'],4))`, "💵...", "R$ ");
     if (tl === '/btc') return triggerAndWait(ctx, `import requests\nv=requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl").json()['bitcoin']['brl']\nprint(f"R$ {v:,.0f}".replace(",","."))`, "₿...", "");
 
     // V7.5 handlers
-    if (tl === '/help' || tl.startsWith('/help ')) {
+    if (tl === '/help' || tl.startsWith('/help ')) { if (_checkThrottle('/help')) return;
         const query = tl.replace('/help', '').trim();
         if (!query) {
             const byCat = helpManifest.listByCategory();
@@ -418,7 +431,7 @@ bot.on('text', async (ctx) => {
         if (!results.length) return ctx.reply('Nenhum comando encontrado.');
         return ctx.reply(results.map(c => `/${c.name} — ${c.description}`).join('\n'));
     }
-    if (tl === '/git' || tl.startsWith('/git ')) {
+    if (tl === '/git' || tl.startsWith('/git ')) { if (_checkThrottle('/git')) return;
         const guardResult = guard(ctx, '/git');
         if (guardResult.blocked) {
             return ctx.reply(`⛔ ${guardResult.reason === 'shell_injection_detected' ? 'Caracteres perigosos detectados.' : 'Comando inválido.'}`);
@@ -432,7 +445,7 @@ bot.on('text', async (ctx) => {
             return ctx.reply(`❌ Erro: ${e.message}`);
         }
     }
-    if (tl === '/corrigir' || tl.startsWith('/corrigir ')) {
+    if (tl === '/corrigir' || tl.startsWith('/corrigir ')) { if (_checkThrottle('/corrigir')) return;
         const text = tl.replace('/corrigir', '').trim();
         if (!text) return ctx.reply('Uso: /corrigir <texto da correção>');
         const db = new (require('better-sqlite3'))('./data/knowledge/documents.db');
