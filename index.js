@@ -461,7 +461,7 @@ bot.on('text', async (ctx) => {
         db.close();
         return ctx.reply(result.success ? `✅ Correção #${result.id} gravada.` : `❌ Erro: ${result.error}`);
     }
-    ctx.reply(await agents.run(t, { history: conversationHistory, persona, maxHistoryTurns: MAX_HISTORY_TURNS }));
+    await feedback.sendWithFeedback(ctx, await agents.run(t, { history: conversationHistory, persona, maxHistoryTurns: MAX_HISTORY_TURNS }));
 });
 
 
