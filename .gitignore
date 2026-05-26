@@ -31,3 +31,4 @@ tools/leak-auditor.js
 *.bkp*
 data/*.db
 data/**/*.db
+data/critic-rejections.log
