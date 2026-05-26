@@ -533,8 +533,9 @@ bot.on('callback_query', async (ctx) => {
 
 
 
+metrics.init();
+
 bot.launch({ dropPendingUpdates: true }).then(() => {
   console.log("MiniClawwork v3.9 online");
-  metrics.init();
   require('./jobs/watchdog').start(bot);
 });
