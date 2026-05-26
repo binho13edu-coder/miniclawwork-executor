@@ -380,6 +380,17 @@ bot.hears(/\b([0-9a-f]{8})\b/i, async (ctx) => {
     ctx.reply('Erro ao recuperar contexto: ' + e.message);
   }
 });
+bot.command('metrics', async (ctx) => {
+    if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+    const averages = metrics.getAverages(7);
+    if (!averages.length) return ctx.reply('📊 Sem métricas ainda.');
+    let msg = '📊 Latência média (7 dias):\n\n';
+    for (const row of averages) {
+        msg += `• ${row.command}: ${Math.round(row.avg_duration)}ms (${row.call_count}x)\n`;
+    }
+    ctx.reply(msg);
+});
+
 bot.on('text', async (ctx) => {
     const t = ctx.message.text;
     const tl = t.toLowerCase().trim();
@@ -520,16 +531,7 @@ bot.on('callback_query', async (ctx) => {
 });
 
 
-bot.command('metrics', async (ctx) => {
-    if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-    const averages = metrics.getAverages(7);
-    if (!averages.length) return ctx.reply('📊 Sem métricas ainda.');
-    let msg = '📊 Latência média (7 dias):\n\n';
-    for (const row of averages) {
-        msg += `• ${row.command}: ${Math.round(row.avg_duration)}ms (${row.call_count}x)\n`;
-    }
-    ctx.reply(msg);
-});
+
 
 bot.launch({ dropPendingUpdates: true }).then(() => {
   console.log("MiniClawwork v3.9 online");
