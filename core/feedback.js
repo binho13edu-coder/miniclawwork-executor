@@ -1,10 +1,14 @@
 const { Markup } = require('telegraf');
 
+const awaitingCorrections = new Map();
+const TTL_MS = 5 * 60 * 1000; // 5 minutos
+
 function init(db) {
     try {
         db.exec(`
             CREATE TABLE IF NOT EXISTS feedback (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
                 message_id INTEGER,
                 chat_id INTEGER,
                 feedback_type TEXT,
@@ -47,6 +51,7 @@ async function handleCallback(ctx, db) {
         const message = ctx.callbackQuery?.message;
         const messageId = message?.message_id || null;
         const chatId = message?.chat?.id || null;
+        const userId = ctx.from?.id || null;
         
         let command = '';
         if (message?.text) {
@@ -54,10 +59,10 @@ async function handleCallback(ctx, db) {
         }
 
         const stmt = db.prepare(`
-            INSERT INTO feedback (message_id, chat_id, feedback_type, command)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO feedback (user_id, message_id, chat_id, feedback_type, command)
+            VALUES (?, ?, ?, ?, ?)
         `);
-        stmt.run(messageId, chatId, feedbackType, command);
+        stmt.run(userId, messageId, chatId, feedbackType, command);
 
         try {
             await ctx.answerCbQuery('Feedback registrado.');
@@ -69,6 +74,23 @@ async function handleCallback(ctx, db) {
             await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
         } catch (e) {
             console.error('Error editing message reply markup:', e);
+        }
+
+        // Prompt de correção para feedback negativo
+        if (feedbackType === 'down') {
+            const originalQuery = message?.text || 'Sem contexto original';
+            
+            awaitingCorrections.set(userId, {
+                awaitingCorrection: true,
+                originalQuery,
+                timestamp: Date.now()
+            });
+
+            try {
+                await ctx.reply('❌ Resposta marcada como incorreta.\nDeseja corrigir? Responda:\n/corrigir <versão correta>');
+            } catch (e) {
+                console.error('[Feedback] Erro ao enviar prompt de correção:', e);
+            }
         }
 
     } catch (error) {
@@ -83,8 +105,28 @@ async function handleCallback(ctx, db) {
     }
 }
 
+function cleanupExpired() {
+    const now = Date.now();
+    for (const [userId, data] of awaitingCorrections.entries()) {
+        if (now - data.timestamp > TTL_MS) {
+            awaitingCorrections.delete(userId);
+        }
+    }
+}
+
+function getAwaitingCorrection(userId) {
+    return awaitingCorrections.get(userId);
+}
+
+function deleteAwaitingCorrection(userId) {
+    awaitingCorrections.delete(userId);
+}
+
 module.exports = {
+    init,
     sendWithFeedback,
     handleCallback,
-    init
+    cleanupExpired,
+    getAwaitingCorrection,
+    deleteAwaitingCorrection
 };

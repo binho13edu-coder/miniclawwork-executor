@@ -19,6 +19,7 @@ const { execSync } = require('child_process');
 const { guard, throttle } = require('./core/command-guard');
 const helpManifest = require('./core/help-manifest');
 const corrections = require('./core/corrections');
+const feedback = require('./core/feedback');
 const agents = require('./core/agents');
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN, { handlerTimeout: 300000 });
@@ -447,7 +448,12 @@ bot.on('text', async (ctx) => {
         }
     }
     if (tl === '/corrigir' || tl.startsWith('/corrigir ')) { if (_checkThrottle('/corrigir')) return;
-        const text = tl.replace('/corrigir', '').trim();
+        let text = tl.replace('/corrigir', '').trim();
+        const pending = feedback.getAwaitingCorrection(ctx.from.id);
+        if (pending) {
+            text = `[Contexto Original: ${pending.originalQuery}]\n${text}`;
+            feedback.deleteAwaitingCorrection(ctx.from.id);
+        }
         if (!text) return ctx.reply('Uso: /corrigir <texto da correção>');
         const db = new (require('better-sqlite3'))('./data/knowledge/documents.db');
         corrections.init(db);
@@ -481,6 +487,11 @@ bot.on('document', async (ctx) => {
     console.error('Doc handler:', e);
     ctx.reply('❌ Upload falhou: ' + e.message);
   }
+});
+
+
+bot.on('callback_query', async (ctx) => {
+  await feedback.handleCallback(ctx, db);
 });
 
 bot.launch({ dropPendingUpdates: true }).then(() => {
