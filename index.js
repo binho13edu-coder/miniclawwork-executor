@@ -490,8 +490,10 @@ bot.on('document', async (ctx) => {
 });
 
 
+const feedbackDb = new (require('better-sqlite3'))('./data/feedback.db');
+
 bot.on('callback_query', async (ctx) => {
-  await feedback.handleCallback(ctx, db);
+  await feedback.handleCallback(ctx, feedbackDb);
 });
 
 bot.launch({ dropPendingUpdates: true }).then(() => {
