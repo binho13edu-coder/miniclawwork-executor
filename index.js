@@ -20,6 +20,7 @@ const { guard, throttle } = require('./core/command-guard');
 const helpManifest = require('./core/help-manifest');
 const corrections = require('./core/corrections');
 const feedback = require('./core/feedback');
+const metrics = require('./core/metrics');
 const agents = require('./core/agents');
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN, { handlerTimeout: 300000 });
@@ -297,6 +298,28 @@ const verificarAlertas = async () => {
 setInterval(verificarAlertas, 2 * 60 * 1000);
 
 
+
+// Middleware de latência (V80-NEW-H)
+bot.use(async (ctx, next) => {
+    const start = Date.now();
+    try {
+        await next();
+    } finally {
+        const duration = Date.now() - start;
+        let command = 'unknown';
+        if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/')) {
+            command = ctx.message.text.split(' ')[0].split('@')[0];
+        } else if (ctx.callbackQuery) {
+            command = 'callback_query';
+        } else if (ctx.message && ctx.message.document) {
+            command = 'document';
+        } else if (ctx.message && ctx.message.text) {
+            command = 'text';
+        }
+        metrics.track(command, duration);
+    }
+});
+
 bot.command('ctx', async (ctx) => {
   const tResult = throttle(ctx.from.id, '/ctx');
   if (tResult.throttled) { return ctx.reply('⏳ Aguarde ' + tResult.waitSeconds + 's antes de usar /ctx novamente.'); }
@@ -496,7 +519,20 @@ bot.on('callback_query', async (ctx) => {
   await feedback.handleCallback(ctx, feedbackDb);
 });
 
+
+bot.command('metrics', async (ctx) => {
+    if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+    const averages = metrics.getAverages(7);
+    if (!averages.length) return ctx.reply('📊 Sem métricas ainda.');
+    let msg = '📊 Latência média (7 dias):\n\n';
+    for (const row of averages) {
+        msg += `• ${row.command}: ${Math.round(row.avg_duration)}ms (${row.call_count}x)\n`;
+    }
+    ctx.reply(msg);
+});
+
 bot.launch({ dropPendingUpdates: true }).then(() => {
   console.log("MiniClawwork v3.9 online");
+  metrics.init();
   require('./jobs/watchdog').start(bot);
 });
