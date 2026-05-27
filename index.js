@@ -10,6 +10,7 @@ const axios = require('axios');
 const fs = require('fs');
 const cryptoSkill = require('./skills/crypto');
 const llmSkill    = require('./skills/llm');
+const { initCache, getCacheStats } = require('./core/llm.js');
 const coreRouter = require('./core/router');
 const { handleFinance } = require('./core/finance');
 const { buildStatus } = require('./skills/status');
@@ -391,6 +392,12 @@ bot.command('metrics', async (ctx) => {
     ctx.reply(msg);
 });
 
+bot.command('cache', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const stats = getCacheStats();
+  ctx.reply('📦 Cache LLM\n\n• Entradas: ' + stats.total_entries + '\n• Hits totais: ' + stats.total_hits + '\n• Hit rate: ' + stats.hit_rate);
+});
+
 bot.on('text', async (ctx) => {
     const t = ctx.message.text;
     const tl = t.toLowerCase().trim();
@@ -534,6 +541,7 @@ bot.on('callback_query', async (ctx) => {
 
 
 metrics.init();
+initCache();
 
 bot.launch({ dropPendingUpdates: true }).then(() => {
   console.log("MiniClawwork v3.9 online");

@@ -1,9 +1,12 @@
 /**
- * core/llm.js — MiniClawwork V6.3
- * Multi-LLM router com Circuit Breaker + Exponential Backoff + Token Bucket
+ * core/llm.js — MiniClawwork V8.0 (V80-03)
+ * Multi-LLM router com Circuit Breaker + Exponential Backoff + Token Bucket + Cache SQLite
  */
 
 const fs = require('fs');
+const crypto = require('crypto');
+const path = require('path');
+const Database = require('better-sqlite3');
 
 const PROVIDERS = {
   groq: {
@@ -177,7 +180,7 @@ let soulPromptCache = null;
 function getSoulPrompt() {
   if (soulPromptCache !== null) return soulPromptCache;
   try {
-    const soulPath = require('path').join(__dirname, '..', 'SOUL.md');
+    const soulPath = path.join(__dirname, '..', 'SOUL.md');
     if (fs.existsSync(soulPath)) {
       soulPromptCache = fs.readFileSync(soulPath, 'utf8');
     } else {
@@ -194,11 +197,91 @@ function getSoulPrompt() {
 try { getSoulPrompt(); } catch (e) { console.warn('[SOUL] Boot cache failed:', e.message); }
 // =====================================
 
+// === LLM Cache SQLite (V80-03) ===
+const dbPath = path.join(__dirname, '..', 'data', 'llm_cache.db');
+let db = null;
+
+function initCache() {
+  try {
+    const dir = path.dirname(dbPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS llm_cache (
+        hash TEXT PRIMARY KEY,
+        prompt TEXT,
+        response TEXT,
+        hits INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_hit DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    const deleted = db.prepare(
+      "DELETE FROM llm_cache WHERE last_hit < datetime('now', '-24 hours')"
+    ).run();
+    if (deleted.changes > 0) {
+      console.log(`[CACHE] TTL cleanup: ${deleted.changes} entrada(s) expirada(s) removida(s)`);
+    }
+    console.log('[CACHE] llm_cache.db inicializado. WAL mode ativo.');
+  } catch (e) {
+    console.warn('[CACHE] Falha ao inicializar cache:', e.message);
+    db = null;
+  }
+}
+
+function getCacheStats() {
+  if (!db) return { total_entries: 0, total_hits: 0, hit_rate: '0.00%' };
+
+  try {
+    const entriesRow = db.prepare("SELECT COUNT(*) AS count FROM llm_cache").get();
+    const hitsRow = db.prepare("SELECT SUM(hits) AS total FROM llm_cache").get();
+
+    const total_entries = entriesRow ? entriesRow.count : 0;
+    const total_sum_hits = (hitsRow && hitsRow.total) ? hitsRow.total : 0;
+
+    const actual_hits = Math.max(0, total_sum_hits - total_entries);
+    const hit_rate = total_sum_hits > 0
+      ? ((actual_hits / total_sum_hits) * 100).toFixed(2) + '%'
+      : '0.00%';
+
+    return { total_entries, total_hits: actual_hits, hit_rate };
+  } catch (e) {
+    console.warn('[CACHE] Erro ao obter stats:', e.message);
+    return { total_entries: 0, total_hits: 0, hit_rate: '0.00%' };
+  }
+}
+
+function cacheHash(prompt, options) {
+  return crypto.createHash('sha256').update(prompt + JSON.stringify(options)).digest('hex');
+}
+
+function isCacheable(response) {
+  return typeof response === 'string'
+    && response.length > 20
+    && !response.includes('Nao consegui processar');
+}
+// ==================================
+
 const router = new LLMRouter();
-module.exports = { LLMRouter, router, CircuitBreaker, TokenBucket, ask, getSoulPrompt };
 
 async function ask(prompt, options = {}) {
   try {
+    if (db) {
+      const hash = cacheHash(prompt, options);
+      const cached = db.prepare("SELECT response FROM llm_cache WHERE hash = ?").get(hash);
+      if (cached) {
+        db.prepare(
+          "UPDATE llm_cache SET hits = hits + 1, last_hit = CURRENT_TIMESTAMP WHERE hash = ?"
+        ).run(hash);
+        return cached.response;
+      }
+    }
+
     const messages = [];
     const soulPrompt = getSoulPrompt();
     if (soulPrompt) {
@@ -206,8 +289,33 @@ async function ask(prompt, options = {}) {
     }
     messages.push({ role: 'user', content: prompt });
     const result = await router.chat(messages, options);
-    return result.content;
+    const response = result.content;
+
+    if (db && isCacheable(response)) {
+      const hash = cacheHash(prompt, options);
+      db.prepare(`
+        INSERT INTO llm_cache (hash, prompt, response)
+        VALUES (?, ?, ?)
+        ON CONFLICT(hash) DO UPDATE SET
+          response = excluded.response,
+          hits = excluded.hits + 1,
+          last_hit = CURRENT_TIMESTAMP
+      `).run(hash, prompt, response);
+    }
+
+    return response;
   } catch (e) {
     return "Nao consegui processar agora. Tente em instantes.";
   }
 }
+
+module.exports = {
+  LLMRouter,
+  router,
+  CircuitBreaker,
+  TokenBucket,
+  ask,
+  getSoulPrompt,
+  initCache,
+  getCacheStats,
+};
