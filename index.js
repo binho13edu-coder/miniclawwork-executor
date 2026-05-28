@@ -589,7 +589,7 @@ bot.on('text', async (ctx) => {
         if (!planState.has(userId)) {
             // Inicio: gerar 3 perguntas de clarificacao
             const prompt = `Objetivo do usuario: ${objective}\\n\\nComo estrategista de negocios, faca 3 perguntas de clarificacao curtas e objetivas para ajudar a estruturar um plano de acao. Retorne APENAS as 3 perguntas, uma por linha, numeradas.`;
-            const questions = await ask(prompt, { persona: "Voce e um estrategista de negocios direto e objetivo. Faca perguntas de clarificacao curtas." });
+            const questions = await llmSkill.askLLM(prompt, { history: [], persona: "Voce e um estrategista de negocios direto e objetivo. Faca perguntas de clarificacao curtas.", maxHistoryTurns: 3 });
             const qList = questions.split('\\n').filter(q => q.trim()).slice(0, 3);
             planState.set(userId, { step: 0, answers: [], questions: qList, objective, timestamp: now });
             return ctx.reply('🎯 *Plano: ' + objective + '*\\n\\n' + qList.map((q, i) => (i+1) + '. ' + q.replace(/^\\d+\\.\\s*/, '')).join('\\n') + '\\n\\nResponda com a resposta da pergunta 1.', { parse_mode: 'Markdown' });
@@ -603,7 +603,7 @@ bot.on('text', async (ctx) => {
                 // Gerar plano final
                 const context = state.questions.map((q, i) => 'P' + (i+1) + ': ' + q + '\\nR' + (i+1) + ': ' + state.answers[i]).join('\\n');
                 const planPrompt = `Objetivo: ${state.objective}\\n\\n${context}\\n\\nComo estrategista, gere um plano de acao estruturado em Markdown com: 1. Resumo do objetivo, 2. 3-5 acoes concretas, 3. Metricas de sucesso, 4. Proximos passos imediatos.`;
-                const plan = await ask(planPrompt, { persona: "Voce e um estrategista de negocios. Gere planos claros, executaveis e em Markdown." });
+                const plan = await llmSkill.askLLM(planPrompt, { history: [], persona: "Voce e um estrategista de negocios. Gere planos claros, executaveis e em Markdown.", maxHistoryTurns: 3 });
                 
                 // Persistir em document_chunks
                 try {
