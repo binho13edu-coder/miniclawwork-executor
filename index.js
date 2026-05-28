@@ -143,7 +143,7 @@ def get_domain_age_days(domain):
         url = f"http://web.archive.org/cdx/search/cdx?url={domain}&limit=1"
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
-            lines = response.text.strip().split("\n")
+            lines = response.text.strip().splitlines()
             if lines and lines[0]:
                 parts = lines[0].split(" ")
                 if len(parts) >= 2:
