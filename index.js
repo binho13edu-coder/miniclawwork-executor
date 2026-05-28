@@ -125,6 +125,36 @@ const runLeads = (ctx, q) => {
 import requests, re, json, urllib.parse, warnings
 from ddgs import DDGS
 warnings.filterwarnings("ignore")
+def get_domain_age_days(domain):
+    try:
+        import whois
+        w = whois.whois(domain)
+        if w.creation_date:
+            cd = w.creation_date
+            if isinstance(cd, list): cd = cd[0]
+            if cd:
+                if cd.tzinfo is None:
+                    cd = cd.replace(tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc)
+                return (now - cd).days
+    except Exception:
+        pass
+    try:
+        url = f"http://web.archive.org/cdx/search/cdx?url={domain}&limit=1"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            lines = response.text.strip().split("\n")
+            if lines and lines[0]:
+                parts = lines[0].split(" ")
+                if len(parts) >= 2:
+                    ts = parts[1]
+                    if len(ts) >= 8:
+                        dt = datetime.strptime(ts[:8], "%Y%m%d").replace(tzinfo=timezone.utc)
+                        now = datetime.now(timezone.utc)
+                        return (now - dt).days
+    except Exception:
+        pass
+    return None
 bl=['tripadvisor','facebook','instagram','linkedin','youtube','wikipedia','yelp','guiamais','telelistas','restaurantguru','glassdoor','gastroranking','doctoralia','boaconsulta','cronoshare','peritoanimal','encontra','hospitaleclinicas','clinicasbrasilia','rededorsaoluiz','guiatelefone','guiacidade','mecanicos.net','infoisinfo','applocal','listamais','99freelas','getninjas','habitissimo','apontador','foursquare','yelp','nicelocal','guiafacil','catalogo.med','empresafone','paginaamarela','dentistas.net','catalogo','twinkle','google.com/maps','maps.google','trabalhabrasil','salario.com','empregare','buscja','avaliamed','exiap','kdminhaoficina']
 ebl=['contact@','info@linktomedia','nesx.co','example','test','sentry','wixpress','google','bing','images','png','jpg','email@email','ativesite@','comercial@lista','noreply','no-reply','suporte@','contato@lista','atendimento@trabalha']
 def is_fake(p):
@@ -225,11 +255,24 @@ for r in results:
                 agg_terms = ['cylex','guia','catalogo','eguias','telelistas','apontador','doctoralia','convenio','plano odontologico','encontre','lista de profissionais']
                 _check = (raw_title + r['href'] + r.get('body','')).lower()
                 sc = 0
-                if e: sc += 2
-                if p: sc += 2
-                if any(ag in _check for ag in agg_terms): sc -= 2; tag = 'possivel agregador'
-                else: sc += 2; tag = ''
-                leads.append({"title":raw_title, "link":r['href'], "email":e[0] if e else "N/A", "phone":p[0] if p else "N/A", "score":sc, "tag":tag})
+                tags = []
+                brk = []
+                if e: sc += 2; brk.append("+email")
+                if p: sc += 2; brk.append("+phone")
+                if any(ag in _check for ag in agg_terms): sc -= 2; tags.append('⚠️ possivel agregador')
+                else: sc += 2
+                if 'google.com/maps' in u or 'g.page' in u or '@type="LocalBusiness"' in res.text: sc += 3; brk.append("+gmb")
+                social_count = sum(1 for plat in ['instagram.com', 'facebook.com', 'linkedin.com'] if plat in res.text.lower())
+                if social_count >= 2: sc += 1; brk.append("+social")
+                if not e and not p: sc -= 3; tags.append('☠️ lead morto')
+                age_days = get_domain_age_days(dom)
+                if age_days is not None:
+                    if age_days > 730: sc += 2; brk.append("+2yrs")
+                    elif age_days < 180: sc -= 1; tags.append('🌱 dominio novo')
+                sc = max(0, min(sc, 15))
+                tag_str = ' '.join(tags)
+                brk_str = ''.join(brk)
+                leads.append({"title":raw_title, "link":r['href'], "email":e[0] if e else "N/A", "phone":p[0] if p else "N/A", "score":sc, "tag":tag_str, "breakdown":brk_str})
                 seen.add(dom)
     except Exception as ex:
         pass
