@@ -32,6 +32,7 @@ let state = { leads: [], selectedLead: null };
 let conversationHistory = [];
 let alertas = [];
 let alertaIdCounter = 1;
+const planState = new Map(); // V80-07
 const persona = "INSTRUÇÃO OBRIGATÓRIA: Seu nome é MiniClawwork. Você é um agente operacional Telegram criado pelo Fábio. PROIBIDO mencionar LLaMA, Meta, ChatGPT, Gemini, OpenAI ou qualquer tecnologia subjacente. Se alguém perguntar quem você é, responda EXATAMENTE: Sou o MiniClawwork, agente operacional do Fábio. Minhas funções: busca de leads B2B, registro financeiro, monitoramento de cripto e respostas gerais. Responda sempre em português, de forma direta e sem enrolação. INSTRUÇÃO ANTI-ALUCINAÇÃO: Se não tiver certeza sobre uma informação factual, responda exatamente: Não tenho dados suficientes para responder isso com precisão. Nunca invente nomes, empresas, datas ou fatos técnicos.";
 const MAX_LEADS = 20;
 const MAX_HISTORY_TURNS = 3;
@@ -572,6 +573,63 @@ bot.on('text', async (ctx) => {
         db.close();
         return ctx.reply(result.success ? `✅ Correção #${result.id} gravada.` : `❌ Erro: ${result.error}`);
     }
+
+    // V80-07 — /plan interrogação reversa
+    if (tl === '/plan' || tl.startsWith('/plan ')) { if (_checkThrottle('/plan')) return;
+        const objective = tl.replace('/plan', '').trim();
+        if (!objective) return ctx.reply('Uso: /plan <objetivo>\\nExemplo: /plan prospectar clínicas odontológicas');
+        
+        // TTL 10min: limpar entries antigos
+        const now = Date.now();
+        for (const [uid, data] of planState.entries()) {
+            if (now - data.timestamp > 10 * 60 * 1000) planState.delete(uid);
+        }
+        
+        const userId = ctx.from.id;
+        if (!planState.has(userId)) {
+            // Inicio: gerar 3 perguntas de clarificacao
+            const prompt = `Objetivo do usuario: ${objective}\\n\\nComo estrategista de negocios, faca 3 perguntas de clarificacao curtas e objetivas para ajudar a estruturar um plano de acao. Retorne APENAS as 3 perguntas, uma por linha, numeradas.`;
+            const questions = await ask(prompt, { persona: "Voce e um estrategista de negocios direto e objetivo. Faca perguntas de clarificacao curtas." });
+            const qList = questions.split('\\n').filter(q => q.trim()).slice(0, 3);
+            planState.set(userId, { step: 0, answers: [], questions: qList, objective, timestamp: now });
+            return ctx.reply('🎯 *Plano: ' + objective + '*\\n\\n' + qList.map((q, i) => (i+1) + '. ' + q.replace(/^\\d+\\.\\s*/, '')).join('\\n') + '\\n\\nResponda com a resposta da pergunta 1.', { parse_mode: 'Markdown' });
+        } else {
+            const state = planState.get(userId);
+            state.answers.push(t);
+            state.step++;
+            if (state.step < 3) {
+                return ctx.reply('✅ Anotado.\\n\\n' + (state.step + 1) + '. ' + state.questions[state.step].replace(/^\\d+\\.\\s*/, '') + '\\n\\nResponda a proxima pergunta.');
+            } else {
+                // Gerar plano final
+                const context = state.questions.map((q, i) => 'P' + (i+1) + ': ' + q + '\\nR' + (i+1) + ': ' + state.answers[i]).join('\\n');
+                const planPrompt = `Objetivo: ${state.objective}\\n\\n${context}\\n\\nComo estrategista, gere um plano de acao estruturado em Markdown com: 1. Resumo do objetivo, 2. 3-5 acoes concretas, 3. Metricas de sucesso, 4. Proximos passos imediatos.`;
+                const plan = await ask(planPrompt, { persona: "Voce e um estrategista de negocios. Gere planos claros, executaveis e em Markdown." });
+                
+                // Persistir em document_chunks
+                try {
+                    const kdb = new (require('better-sqlite3'))('./data/knowledge/documents.db');
+                    let docRow = kdb.prepare("SELECT id FROM documents WHERE filename = ? LIMIT 1").get('_planos_sinteticos');
+                    let docId;
+                    if (!docRow) {
+                        const insertDoc = kdb.prepare("INSERT INTO documents (filename, content, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)");
+                        const result = insertDoc.run('_planos_sinteticos', 'Documento sintetico para planos gerados pelo /plan');
+                        docId = result.lastInsertRowid;
+                    } else {
+                        docId = docRow.id;
+                    }
+                    const insertChunk = kdb.prepare("INSERT INTO document_chunks (document_id, chunk_index, content, importance, source) VALUES (?, ?, ?, ?, ?)");
+                    insertChunk.run(docId, 0, plan, 7, 'plan');
+                    kdb.close();
+                } catch (e) {
+                    console.error('[V80-07] Erro ao persistir plano:', e.message);
+                }
+                
+                planState.delete(userId);
+                return ctx.reply('📋 *Plano Gerado*\\n\\n' + plan + '\\n\\n✅ Plano gravado no banco de conhecimento (importancia: 7).', { parse_mode: 'Markdown' });
+            }
+        }
+    }
+
     await feedback.sendWithFeedback(ctx, await agents.run(t, { history: conversationHistory, persona, maxHistoryTurns: MAX_HISTORY_TURNS }));
 });
 
