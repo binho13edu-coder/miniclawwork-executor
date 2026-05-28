@@ -522,11 +522,38 @@ bot.on('text', async (ctx) => {
         if (guardResult.blocked) {
             return ctx.reply(`⛔ ${guardResult.reason === 'shell_injection_detected' ? 'Caracteres perigosos detectados.' : 'Comando inválido.'}`);
         }
-        const subcmd = guardResult.sanitized.replace('/git', '').trim();
+        let subcmd = guardResult.sanitized.replace('/git', '').trim();
         if (!subcmd) return ctx.reply('Uso: /git <comando>');
+        
+        // V80-NEW-F: git output cap
+        const subcmdLower = subcmd.toLowerCase();
+        let isLog = false;
+        if (subcmdLower.startsWith('log')) {
+            isLog = true;
+            if (!subcmd.includes('--oneline')) {
+                subcmd += ' --oneline';
+            }
+            if (!subcmd.match(/-\d+/)) {
+                subcmd += ' -20';
+            }
+        }
+        
         try {
             const output = execSync(`git ${subcmd}`, { cwd: '/home/opc/miniclawwork-executor', encoding: 'utf8', timeout: 10000 });
-            return ctx.reply(`\`\`\`\n${output.slice(0, 4000)}\n\`\`\``, { parse_mode: 'Markdown' });
+            let lines = output.split('\n');
+            const MAX_LINES = isLog ? 20 : 30;
+            let truncated = false;
+            let omitted = 0;
+            if (lines.length > MAX_LINES) {
+                omitted = lines.length - MAX_LINES;
+                lines = lines.slice(0, MAX_LINES);
+                truncated = true;
+            }
+            let finalOutput = lines.join('\n');
+            if (truncated) {
+                finalOutput += `\n... [truncado — ${omitted} linhas omitidas]`;
+            }
+            return ctx.reply(`\`\`\`\n${finalOutput.slice(0, 4000)}\n\`\`\``, { parse_mode: 'Markdown' });
         } catch (e) {
             return ctx.reply(`❌ Erro: ${e.message}`);
         }
