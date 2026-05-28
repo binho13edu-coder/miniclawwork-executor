@@ -575,9 +575,64 @@ bot.on('text', async (ctx) => {
     }
 
     // V80-07 — /plan interrogação reversa
+
+
+    // V80-07 — Interceptação de respostas do /plan
+    if (planState.has(ctx.from.id)) {
+        const userId = ctx.from.id;
+        const state = planState.get(userId);
+        const now = Date.now();
+        
+        // TTL 10min
+        if (now - state.timestamp > 10 * 60 * 1000) {
+            planState.delete(userId);
+        } else {
+            state.answers.push(t);
+            state.step++;
+            state.timestamp = now;
+            
+            if (state.step < 3) {
+                return ctx.reply(`✅ Anotado.\n\n${state.step + 1}. ${state.questions[state.step].replace(/^\\d+\\.\\s*/, '')}\n\nResponda a próxima pergunta.`);
+            } else {
+                // Gerar plano final
+                const context = state.questions.map((q, i) => `P${i+1}: ${q}\nR${i+1}: ${state.answers[i]}`).join('\n');
+                const planPrompt = `Objetivo: ${state.objective}\n\n${context}\n\nComo estrategista, gere um plano de ação estruturado em Markdown com: 1. Resumo do objetivo, 2. 3-5 ações concretas, 3. Métricas de sucesso, 4. Próximos passos imediatos.`;
+                
+                try {
+                    const plan = await llmSkill.askLLM(planPrompt, { history: [], persona: "Você é um estrategista de negócios. Gere planos claros, executáveis e em Markdown.", maxHistoryTurns: 3 });
+                    
+                    // Persistir em document_chunks
+                    try {
+                        const kdb = new (require('better-sqlite3'))('./data/knowledge/documents.db');
+                        let docRow = kdb.prepare("SELECT id FROM documents WHERE filename = ? LIMIT 1").get('_planos_sinteticos');
+                        let docId;
+                        if (!docRow) {
+                            const insertDoc = kdb.prepare("INSERT INTO documents (filename, content, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)");
+                            const result = insertDoc.run('_planos_sinteticos', 'Documento sintético para planos gerados pelo /plan');
+                            docId = result.lastInsertRowid;
+                        } else {
+                            docId = docRow.id;
+                        }
+                        const insertChunk = kdb.prepare("INSERT INTO document_chunks (document_id, chunk_index, content, importance, source) VALUES (?, ?, ?, ?, ?)");
+                        insertChunk.run(docId, 0, plan, 7, 'plan');
+                        kdb.close();
+                    } catch (e) {
+                        console.error('[V80-07] Erro ao persistir plano:', e.message);
+                    }
+                    
+                    planState.delete(userId);
+                    return ctx.reply(`📋 Plano Gerado\n\n${plan}\n\n✅ Plano gravado no banco de conhecimento (importância: 7).`, { parse_mode: 'Markdown' });
+                } catch (e) {
+                    planState.delete(userId);
+                    return ctx.reply(`❌ Erro ao gerar plano: ${e.message}`);
+                }
+            }
+        }
+    }
+
     if (tl === '/plan' || tl.startsWith('/plan ')) { if (_checkThrottle('/plan')) return;
         const objective = tl.replace('/plan', '').trim();
-        if (!objective) return ctx.reply('Uso: /plan <objetivo>\\nExemplo: /plan prospectar clínicas odontológicas');
+        if (!objective) return ctx.reply('Uso: /plan <objetivo>\nExemplo: /plan prospectar clínicas odontológicas');
         
         // TTL 10min: limpar entries antigos
         const now = Date.now();
@@ -587,48 +642,18 @@ bot.on('text', async (ctx) => {
         
         const userId = ctx.from.id;
         if (!planState.has(userId)) {
-            // Inicio: gerar 3 perguntas de clarificacao
-            const prompt = `Objetivo do usuario: ${objective}\\n\\nComo estrategista de negocios, faca 3 perguntas de clarificacao curtas e objetivas para ajudar a estruturar um plano de acao. Retorne APENAS as 3 perguntas, uma por linha, numeradas.`;
-            const questions = await llmSkill.askLLM(prompt, { history: [], persona: "Voce e um estrategista de negocios direto e objetivo. Faca perguntas de clarificacao curtas.", maxHistoryTurns: 3 });
-            const qList = questions.split('\\n').filter(q => q.trim()).slice(0, 3);
-            planState.set(userId, { step: 0, answers: [], questions: qList, objective, timestamp: now });
-            return ctx.reply('🎯 *Plano: ' + objective + '*\\n\\n' + qList.map((q, i) => (i+1) + '. ' + q.replace(/^\\d+\\.\\s*/, '')).join('\\n') + '\\n\\nResponda com a resposta da pergunta 1.', { parse_mode: 'Markdown' });
-        } else {
-            const state = planState.get(userId);
-            state.answers.push(t);
-            state.step++;
-            if (state.step < 3) {
-                return ctx.reply('✅ Anotado.\\n\\n' + (state.step + 1) + '. ' + state.questions[state.step].replace(/^\\d+\\.\\s*/, '') + '\\n\\nResponda a proxima pergunta.');
-            } else {
-                // Gerar plano final
-                const context = state.questions.map((q, i) => 'P' + (i+1) + ': ' + q + '\\nR' + (i+1) + ': ' + state.answers[i]).join('\\n');
-                const planPrompt = `Objetivo: ${state.objective}\\n\\n${context}\\n\\nComo estrategista, gere um plano de acao estruturado em Markdown com: 1. Resumo do objetivo, 2. 3-5 acoes concretas, 3. Metricas de sucesso, 4. Proximos passos imediatos.`;
-                const plan = await llmSkill.askLLM(planPrompt, { history: [], persona: "Voce e um estrategista de negocios. Gere planos claros, executaveis e em Markdown.", maxHistoryTurns: 3 });
-                
-                // Persistir em document_chunks
-                try {
-                    const kdb = new (require('better-sqlite3'))('./data/knowledge/documents.db');
-                    let docRow = kdb.prepare("SELECT id FROM documents WHERE filename = ? LIMIT 1").get('_planos_sinteticos');
-                    let docId;
-                    if (!docRow) {
-                        const insertDoc = kdb.prepare("INSERT INTO documents (filename, content, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)");
-                        const result = insertDoc.run('_planos_sinteticos', 'Documento sintetico para planos gerados pelo /plan');
-                        docId = result.lastInsertRowid;
-                    } else {
-                        docId = docRow.id;
-                    }
-                    const insertChunk = kdb.prepare("INSERT INTO document_chunks (document_id, chunk_index, content, importance, source) VALUES (?, ?, ?, ?, ?)");
-                    insertChunk.run(docId, 0, plan, 7, 'plan');
-                    kdb.close();
-                } catch (e) {
-                    console.error('[V80-07] Erro ao persistir plano:', e.message);
-                }
-                
-                planState.delete(userId);
-                return ctx.reply('📋 *Plano Gerado*\\n\\n' + plan + '\\n\\n✅ Plano gravado no banco de conhecimento (importancia: 7).', { parse_mode: 'Markdown' });
+            const prompt = `Objetivo do usuário: ${objective}\n\nComo estrategista de negócios, faça 3 perguntas de clarificação curtas e objetivas para ajudar a estruturar um plano de ação. Retorne APENAS as 3 perguntas, uma por linha, numeradas.`;
+            try {
+                const questions = await llmSkill.askLLM(prompt, { history: [], persona: "Você é um estrategista de negócios direto e objetivo. Faça perguntas de clarificação curtas.", maxHistoryTurns: 3 });
+                const qList = questions.split('\n').filter(q => q.trim()).slice(0, 3);
+                planState.set(userId, { step: 0, answers: [], questions: qList, objective, timestamp: now });
+                return ctx.reply(`🎯 Plano: ${objective}\n\n${qList.map((q, i) => `${i+1}. ${q.replace(/^\\d+\\.\\s*/, '')}`).join('\n')}\n\nResponda com a resposta da pergunta 1.`);
+            } catch (e) {
+                return ctx.reply(`❌ Erro ao gerar perguntas: ${e.message}`);
             }
         }
     }
+
 
     await feedback.sendWithFeedback(ctx, await agents.run(t, { history: conversationHistory, persona, maxHistoryTurns: MAX_HISTORY_TURNS }));
 });
