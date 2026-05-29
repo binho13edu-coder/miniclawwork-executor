@@ -582,9 +582,11 @@ bot.on('text', async (ctx) => {
     if (tl === '/btc') return triggerAndWait(ctx, `import requests\nv=requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl").json()['bitcoin']['brl']\nprint(f"R$ {v:,.0f}".replace(",","."))`, "₿...", "");
 
     // V7.5 handlers
+    // V80-11 — /help semantico
     if (tl === '/help' || tl.startsWith('/help ')) { if (_checkThrottle('/help')) return;
         const query = tl.replace('/help', '').trim();
         if (!query) {
+            // Comportamento atual — intocavel
             const byCat = helpManifest.listByCategory();
             let text = '📖 Comandos disponíveis:\n\n';
             for (const [cat, cmds] of Object.entries(byCat)) {
@@ -592,9 +594,18 @@ bot.on('text', async (ctx) => {
             }
             return ctx.reply(text);
         }
+        // V80-11: resposta semantica via LLM
         const results = helpManifest.search(query);
         if (!results.length) return ctx.reply('Nenhum comando encontrado.');
-        return ctx.reply(results.map(c => `/${c.name} — ${c.description}`).join('\n'));
+        try {
+            const cmdInfo = results[0];
+            const prompt = `Usuario perguntou: "${query}"\n\nComando encontrado: /${cmdInfo.name}\nDescricao: ${cmdInfo.description}\nCategoria: ${cmdInfo.category}\nExemplos: ${cmdInfo.examples ? cmdInfo.examples.join(', ') : 'nenhum'}\n\nComo assistente util, responda de forma natural e amigavel explicando como usar este comando. Inclua um exemplo pratico. Responda em portugues.`;
+            const response = await llmSkill.askLLM(prompt, { history: [], persona: 'Voce e um assistente util e direto. Explique comandos de forma simples com exemplos praticos.', maxHistoryTurns: 3 });
+            return ctx.reply(response, { parse_mode: 'Markdown' });
+        } catch (e) {
+            // Fallback: resposta estatica se LLM falhar
+            return ctx.reply(results.map(c => `/${c.name} — ${c.description}`).join('\n'));
+        }
     }
     if (tl === '/git' || tl.startsWith('/git ')) { if (_checkThrottle('/git')) return;
         const guardResult = guard(ctx, '/git');
