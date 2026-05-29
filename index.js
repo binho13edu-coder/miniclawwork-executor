@@ -820,4 +820,7 @@ initCache();
 bot.launch({ dropPendingUpdates: true }).then(() => {
   console.log("MiniClawwork v3.9 online");
   require('./jobs/watchdog').start(bot);
+  // V80-NEW-C — Relatorio semanal de feedback
+  const { scheduleWeeklyReport } = require('./jobs/feedback-report');
+  scheduleWeeklyReport(bot);
 });
