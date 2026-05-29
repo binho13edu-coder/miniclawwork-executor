@@ -322,38 +322,64 @@ bot.use(async (ctx, next) => {
 
 bot.command('ctx', async (ctx) => {
   const tResult = throttle(ctx.from.id, '/ctx');
-  if (tResult.throttled) { return ctx.reply('⏳ Aguarde ' + tResult.waitSeconds + 's antes de usar /ctx novamente.'); }
+  if (tResult.throttled) { return ctx.reply(`⏳ Aguarde ${tResult.waitSeconds}s antes de usar /ctx novamente.`); }
   try {
-    const query = ctx.message.text.replace('/ctx', '').trim();
-    if (query) {
-      const KnowledgeDB = require('better-sqlite3');
-      const kdb = new KnowledgeDB('./data/knowledge/documents.db');
+    const subcmd = ctx.message.text.replace('/ctx', '').trim();
+    if (!subcmd) {
+      return ctx.reply('Uso: /ctx <termo> | /ctx buscar <termo> | /ctx recente | /ctx importante | /ctx <ID>');
+    }
+
+    const KnowledgeDB = require('better-sqlite3');
+    const kdb = new KnowledgeDB('./data/knowledge/documents.db');
+    let rows = [];
+    let out = '';
+
+    if (subcmd === 'recente') {
+      rows = kdb.prepare('SELECT d.id, d.filename, dc.content FROM documents d LEFT JOIN document_chunks dc ON d.id=dc.document_id GROUP BY d.id ORDER BY d.created_at DESC LIMIT 5').all();
+      out = `🧠 Contextos recentes:\n\n`;
+    } else if (subcmd === 'importante') {
+      try {
+        rows = kdb.prepare('SELECT d.id, d.filename, dc.content FROM documents d LEFT JOIN document_chunks dc ON d.id=dc.document_id GROUP BY d.id ORDER BY d.importance DESC LIMIT 5').all();
+      } catch (err) {
+        rows = kdb.prepare('SELECT d.id, d.filename, dc.content FROM documents d LEFT JOIN document_chunks dc ON d.id=dc.document_id GROUP BY d.id ORDER BY d.id DESC LIMIT 5').all();
+      }
+      out = `🧠 Contextos importantes:\n\n`;
+    } else if (/^\d+$/.test(subcmd)) {
+      const docId = parseInt(subcmd, 10);
+      rows = kdb.prepare('SELECT d.id, d.filename, dc.content FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE d.id = ? LIMIT 5').all(docId);
+      out = `🧠 Contexto ID ${docId}:\n\n`;
+    } else {
+      let query = subcmd;
+      if (subcmd.startsWith('buscar ')) {
+        query = subcmd.replace('buscar', '').trim();
+      }
       const stop = new Set(['de','a','o','e','que','um','uma','para','com','em','no','na','os','as','dos','das','por','se','ao','ou']);
       const tokens = query.toLowerCase().replace(/[^a-z\u00e0-\u00fc\s]/gi,' ').split(/\s+/).filter(w => w.length > 2 && !stop.has(w)).slice(0,6);
-      if (!tokens.length) return ctx.reply('Query invalida.');
+      if (!tokens.length) {
+        kdb.close();
+        return ctx.reply('Query invalida.');
+      }
       const andCond = tokens.map(() => 'dc.content LIKE ?').join(' AND ');
       const orCond  = tokens.map(() => 'dc.content LIKE ?').join(' OR ');
       const wilds   = tokens.map(t => '%' + t + '%');
-      let rows = kdb.prepare('SELECT d.filename, dc.content FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE (' + andCond + ') LIMIT 5').all(...wilds);
-      if (!rows.length) rows = kdb.prepare('SELECT d.filename, dc.content FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE (' + orCond + ') LIMIT 5').all(...wilds);
-      kdb.close();
-      if (!rows.length) return ctx.reply('Nenhum documento encontrado para: ' + query);
-      let out = '🧠 Resultados para "' + query + '":\n\n';
-      rows.forEach((r, i) => { out += (i+1) + '. [' + r.filename + ']\n' + r.content.slice(0, 150) + '...\n\n'; });
-      return ctx.reply(out);
+      rows = kdb.prepare(`SELECT d.filename, dc.content FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE (${andCond}) LIMIT 5`).all(...wilds);
+      if (!rows.length) {
+        rows = kdb.prepare(`SELECT d.filename, dc.content FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE (${orCond}) LIMIT 5`).all(...wilds);
+      }
+      out = `🧠 Resultados para "${query}":\n\n`;
     }
-    const docsDir = './docs/';
-    if (!fs.existsSync(docsDir)) return ctx.reply('Nenhum contexto salvo. Envie .md/.txt/.json primeiro!');
-    const files = fs.readdirSync(docsDir).filter(f => f.endsWith('.json') && !f.includes('_'));
-    if (files.length === 0) return ctx.reply('Nenhum documento encontrado.');
-    const metas = files.slice(-5).map(f => {
-      try { return JSON.parse(fs.readFileSync('./docs/' + f, 'utf8')); } catch(e) { return null; }
-    }).filter(Boolean);
-    let list = '📚 Contextos Salvos:\n\n';
-    metas.forEach(m => { list += '• ' + m.id + ' - ' + m.name + '\n'; });
-    list += '\nEnvie mais docs ou use o ID.';
-    await ctx.reply(list);
-  } catch(e) { ctx.reply('Erro: ' + e.message); }
+
+    kdb.close();
+
+    if (!rows.length) return ctx.reply(`Nenhum documento encontrado para: ${subcmd}`);
+
+    rows.forEach((r, i) => {
+      const content = (r.content || '').slice(0, 150);
+      out += `${i+1}. [${r.filename || 'ID: ' + r.id}]\n${content}...\n\n`;
+    });
+    return ctx.reply(out);
+
+  } catch(e) { ctx.reply(`Erro: ${e.message}`); }
 });
 
 // V6.5 - Context Retrieval: detecta Doc ID na mensagem
