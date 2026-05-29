@@ -699,6 +699,49 @@ bot.on('text', async (ctx) => {
     }
 
 
+    // V80-08 — /dump triagem
+    if (tl === '/dump' || tl.startsWith('/dump ')) { if (_checkThrottle('/dump')) return;
+        const text = tl.replace('/dump', '').trim();
+        if (!text) return ctx.reply('Uso: /dump <texto para triagem>\nExemplo: /dump Preciso prospectar 50 clínicas odontológicas em Brasília...');
+        
+        try {
+            const prompt = `Texto recebido: ${text}
+
+Como assistente executivo, faça uma triagem deste texto em 3 seções:
+1. RESUMO: síntese em 2-3 frases
+2. PRÓXIMOS PASSOS: lista de ações concretas
+3. ATENÇÃO: pontos críticos ou riscos
+
+Retorne no formato exato:
+📋 Resumo: ...
+⚡ Próximos passos: ...
+⚠️ Atenção: ...`;
+            const triage = await llmSkill.askLLM(prompt, { history: [], persona: "Você é um assistente executivo direto e objetivo. Faça triagens executivas concisas.", maxHistoryTurns: 3 });
+            
+            try {
+                const kdb = new (require('better-sqlite3'))('./data/knowledge/documents.db');
+                let docRow = kdb.prepare("SELECT id FROM documents WHERE filename = ? LIMIT 1").get('_dump_sintetico');
+                let docId;
+                if (!docRow) {
+                    const insertDoc = kdb.prepare("INSERT INTO documents (filename, content, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)");
+                    const result = insertDoc.run('_dump_sintetico', 'Documento sintético para triagens do /dump');
+                    docId = result.lastInsertRowid;
+                } else {
+                    docId = docRow.id;
+                }
+                const insertChunk = kdb.prepare("INSERT INTO document_chunks (document_id, chunk_index, content, importance, source) VALUES (?, ?, ?, ?, ?)");
+                insertChunk.run(docId, 0, triage, 5, 'dump');
+                kdb.close();
+            } catch (e) {
+                console.error('[V80-08] Erro ao persistir triagem:', e.message);
+            }
+            
+            return ctx.reply(triage, { parse_mode: 'Markdown' });
+        } catch (e) {
+            return ctx.reply(`❌ Erro na triagem: ${e.message}`);
+        }
+    }
+
     await feedback.sendWithFeedback(ctx, await agents.run(t, { history: conversationHistory, persona, maxHistoryTurns: MAX_HISTORY_TURNS }));
 });
 
