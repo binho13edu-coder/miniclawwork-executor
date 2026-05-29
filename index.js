@@ -596,15 +596,22 @@ bot.on('text', async (ctx) => {
         }
         // V80-11: resposta semantica via LLM
         const results = helpManifest.search(query);
-        if (!results.length) return ctx.reply('Nenhum comando encontrado.');
         try {
-            const cmdInfo = results[0];
-            const prompt = `Usuario perguntou: "${query}"\n\nComando encontrado: /${cmdInfo.name}\nDescricao: ${cmdInfo.description}\nCategoria: ${cmdInfo.category}\nExemplos: ${cmdInfo.examples ? cmdInfo.examples.join(', ') : 'nenhum'}\n\nComo assistente util, responda de forma natural e amigavel explicando como usar este comando. Inclua um exemplo pratico. Responda em portugues.`;
+            let prompt;
+            if (results.length) {
+                const cmdInfo = results[0];
+                prompt = `Usuario perguntou: "${query}"\n\nComando encontrado: /${cmdInfo.name}\nDescricao: ${cmdInfo.description}\nCategoria: ${cmdInfo.category}\nExemplos: ${cmdInfo.examples ? cmdInfo.examples.join(', ') : 'nenhum'}\n\nComo assistente util, responda de forma natural e amigavel explicando como usar este comando. Inclua um exemplo pratico. Responda em portugues.`;
+            } else {
+                prompt = `Usuario perguntou: "${query}"\n\nNenhum comando especifico foi encontrado para esta pergunta.\n\nComo assistente util do MiniClawwork, responda de forma natural e amigavel. Se possivel, sugira comandos relacionados ou explique como o usuario pode conseguir o que deseja. Responda em portugues.`;
+            }
             const response = await llmSkill.askLLM(prompt, { history: [], persona: 'Voce e um assistente util e direto. Explique comandos de forma simples com exemplos praticos.', maxHistoryTurns: 3 });
             return ctx.reply(response, { parse_mode: 'Markdown' });
         } catch (e) {
             // Fallback: resposta estatica se LLM falhar
-            return ctx.reply(results.map(c => `/${c.name} — ${c.description}`).join('\n'));
+            if (results.length) {
+                return ctx.reply(results.map(c => `/${c.name} — ${c.description}`).join('\n'));
+            }
+            return ctx.reply('Nenhum comando encontrado. Tente /help para ver a lista completa.');
         }
     }
     if (tl === '/git' || tl.startsWith('/git ')) { if (_checkThrottle('/git')) return;
