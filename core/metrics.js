@@ -77,4 +77,13 @@ function checkDegradation(bot) {
     }
 }
 
-module.exports = { init, track, getAverages, checkDegradation };
+
+function trackRetry() {
+    try {
+        db.prepare("INSERT INTO metrics (command, duration_ms) VALUES ('retry', 0)").run();
+    } catch (err) {
+        console.error('[Metrics] Error tracking retry:', err);
+    }
+}
+
+module.exports = { init, track, trackRetry, getAverages, checkDegradation };
