@@ -495,6 +495,30 @@ bot.on('text', async (ctx) => {
         db.close();
         return ctx.reply(result.success ? `✅ Correção #${result.id} gravada.` : `❌ Erro: ${result.error}`);
     }
+    if (tl === '/dump' || tl.startsWith('/dump ')) { if (_checkThrottle('/dump')) return;
+        let text = t.slice(5).trim();
+        if (!text) return ctx.reply('Uso: /dump <texto para triagem>');
+        const prompt = `Texto recebido: ${text}\n\nComo assistente executivo, faça uma triagem deste texto em 3 seções:\n1. RESUMO: síntese em 2-3 frases\n2. PRÓXIMOS PASSOS: lista de ações concretas\n3. ATENÇÃO: pontos críticos ou riscos\nRetorne no formato:\n📋 Resumo: ...\n⚡ Próximos passos: ...\n⚠️ Atenção: ...`;
+        const resultado = await llmSkill.askLLM(prompt, { history: [], persona: "Assistente Executivo", maxHistoryTurns: 3 });
+        await ctx.reply(resultado);
+
+        try {
+            const db = new (require('better-sqlite3'))('./data/knowledge/documents.db');
+            try { db.exec("ALTER TABLE document_chunks ADD COLUMN importance INTEGER DEFAULT 0;"); } catch(e) {}
+            try { db.exec("ALTER TABLE document_chunks ADD COLUMN source TEXT DEFAULT 'unknown';"); } catch(e) {}
+
+            let doc = db.prepare('SELECT id FROM documents WHERE filename = ?').get('_dump_sintetico');
+            if (!doc) {
+                const res = db.prepare('INSERT INTO documents (filename, type, source) VALUES (?, ?, ?)').run('_dump_sintetico', 'scrap', 'dump');
+                doc = { id: res.lastInsertRowid };
+            }
+            db.prepare('INSERT INTO document_chunks (document_id, chunk_index, content, importance, source) VALUES (?, ?, ?, ?, ?)').run(doc.id, 0, resultado, 5, 'dump');
+            db.close();
+        } catch(e) {
+            console.error('Erro ao persistir dump:', e.message);
+        }
+        return;
+    }
     await feedback.sendWithFeedback(ctx, await agents.run(t, { history: conversationHistory, persona, maxHistoryTurns: MAX_HISTORY_TURNS }));
 });
 
