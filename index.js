@@ -409,39 +409,73 @@ bot.use(async (ctx, next) => {
     }
 });
 
+// V80-09 — /ctx modificadores
 bot.command('ctx', async (ctx) => {
   const tResult = throttle(ctx.from.id, '/ctx');
   if (tResult.throttled) { return ctx.reply('⏳ Aguarde ' + tResult.waitSeconds + 's antes de usar /ctx novamente.'); }
   try {
-    const query = ctx.message.text.replace('/ctx', '').trim();
-    if (query) {
-      const KnowledgeDB = require('better-sqlite3');
-      const kdb = new KnowledgeDB('./data/knowledge/documents.db');
+    const raw = ctx.message.text.replace('/ctx', '').trim();
+    if (!raw) {
+      return ctx.reply('Uso: /ctx <termo> | /ctx buscar <termo> | /ctx recente | /ctx importante | /ctx <ID>');
+    }
+    const KnowledgeDB = require('better-sqlite3');
+    const kdb = new KnowledgeDB('./data/knowledge/documents.db');
+    let rows, out;
+    if (raw === 'recente') {
+      rows = kdb.prepare('SELECT d.filename, dc.content, dc.created_at FROM document_chunks dc JOIN documents d ON d.id=dc.document_id ORDER BY dc.created_at DESC LIMIT 5').all();
+      if (!rows.length) { kdb.close(); return ctx.reply('Nenhum documento recente.'); }
+      out = '📅 Documentos recentes:\n\n';
+      rows.forEach((r, i) => { out += (i+1) + '. [' + r.filename + '] ' + (r.created_at ? '(' + r.created_at + ')' : '') + '\n' + r.content.slice(0, 150) + '...\n\n'; });
+      kdb.close();
+      return ctx.reply(out);
+    }
+    if (raw === 'importante') {
+      rows = kdb.prepare('SELECT d.filename, dc.content, dc.importance FROM document_chunks dc JOIN documents d ON d.id=dc.document_id ORDER BY COALESCE(dc.importance, 0) DESC LIMIT 5').all();
+      if (!rows.length) { kdb.close(); return ctx.reply('Nenhum documento encontrado.'); }
+      out = '⭐ Documentos mais importantes:\n\n';
+      rows.forEach((r, i) => { out += (i+1) + '. [' + r.filename + '] (importance: ' + (r.importance || 0) + ')\n' + r.content.slice(0, 150) + '...\n\n'; });
+      kdb.close();
+      return ctx.reply(out);
+    }
+    if (raw.startsWith('buscar ')) {
+      const term = raw.replace('buscar', '').trim();
+      if (!term) { kdb.close(); return ctx.reply('Uso: /ctx buscar <termo>'); }
       const stop = new Set(['de','a','o','e','que','um','uma','para','com','em','no','na','os','as','dos','das','por','se','ao','ou']);
-      const tokens = query.toLowerCase().replace(/[^a-z\u00e0-\u00fc\s]/gi,' ').split(/\s+/).filter(w => w.length > 2 && !stop.has(w)).slice(0,6);
-      if (!tokens.length) return ctx.reply('Query invalida.');
+      const tokens = term.toLowerCase().replace(/[^a-z\u00e0-\u00fc\s]/gi,' ').split(/\s+/).filter(w => w.length > 2 && !stop.has(w)).slice(0,6);
+      if (!tokens.length) { kdb.close(); return ctx.reply('Query invalida.'); }
       const andCond = tokens.map(() => 'dc.content LIKE ?').join(' AND ');
       const orCond  = tokens.map(() => 'dc.content LIKE ?').join(' OR ');
       const wilds   = tokens.map(t => '%' + t + '%');
-      let rows = kdb.prepare('SELECT d.filename, dc.content FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE (' + andCond + ') LIMIT 5').all(...wilds);
+      rows = kdb.prepare('SELECT d.filename, dc.content FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE (' + andCond + ') LIMIT 5').all(...wilds);
       if (!rows.length) rows = kdb.prepare('SELECT d.filename, dc.content FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE (' + orCond + ') LIMIT 5').all(...wilds);
       kdb.close();
-      if (!rows.length) return ctx.reply('Nenhum documento encontrado para: ' + query);
-      let out = '🧠 Resultados para "' + query + '":\n\n';
+      if (!rows.length) return ctx.reply('Nenhum documento encontrado para: ' + term);
+      out = '🧠 Resultados para "' + term + '":\n\n';
       rows.forEach((r, i) => { out += (i+1) + '. [' + r.filename + ']\n' + r.content.slice(0, 150) + '...\n\n'; });
       return ctx.reply(out);
     }
-    const docsDir = './docs/';
-    if (!fs.existsSync(docsDir)) return ctx.reply('Nenhum contexto salvo. Envie .md/.txt/.json primeiro!');
-    const files = fs.readdirSync(docsDir).filter(f => f.endsWith('.json') && !f.includes('_'));
-    if (files.length === 0) return ctx.reply('Nenhum documento encontrado.');
-    const metas = files.slice(-5).map(f => {
-      try { return JSON.parse(fs.readFileSync('./docs/' + f, 'utf8')); } catch(e) { return null; }
-    }).filter(Boolean);
-    let list = '📚 Contextos Salvos:\n\n';
-    metas.forEach(m => { list += '• ' + m.id + ' - ' + m.name + '\n'; });
-    list += '\nEnvie mais docs ou use o ID.';
-    await ctx.reply(list);
+    if (/^\d+$/.test(raw)) {
+      const docId = parseInt(raw);
+      rows = kdb.prepare('SELECT d.filename, dc.content, dc.chunk_index FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE d.id = ? OR dc.document_id = ? LIMIT 1').all(docId, docId);
+      kdb.close();
+      if (!rows.length) return ctx.reply('Documento ID ' + docId + ' nao encontrado.');
+      const r = rows[0];
+      return ctx.reply('📄 [' + r.filename + '] (chunk ' + (r.chunk_index || 0) + ')\n\n' + r.content.slice(0, 3000));
+    }
+    // Comportamento padrao: busca por termo
+    const stop = new Set(['de','a','o','e','que','um','uma','para','com','em','no','na','os','as','dos','das','por','se','ao','ou']);
+    const tokens = raw.toLowerCase().replace(/[^a-z\u00e0-\u00fc\s]/gi,' ').split(/\s+/).filter(w => w.length > 2 && !stop.has(w)).slice(0,6);
+    if (!tokens.length) { kdb.close(); return ctx.reply('Query invalida.'); }
+    const andCond = tokens.map(() => 'dc.content LIKE ?').join(' AND ');
+    const orCond  = tokens.map(() => 'dc.content LIKE ?').join(' OR ');
+    const wilds   = tokens.map(t => '%' + t + '%');
+    rows = kdb.prepare('SELECT d.filename, dc.content FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE (' + andCond + ') LIMIT 5').all(...wilds);
+    if (!rows.length) rows = kdb.prepare('SELECT d.filename, dc.content FROM document_chunks dc JOIN documents d ON d.id=dc.document_id WHERE (' + orCond + ') LIMIT 5').all(...wilds);
+    kdb.close();
+    if (!rows.length) return ctx.reply('Nenhum documento encontrado para: ' + raw);
+    out = '🧠 Resultados para "' + raw + '":\n\n';
+    rows.forEach((r, i) => { out += (i+1) + '. [' + r.filename + ']\n' + r.content.slice(0, 150) + '...\n\n'; });
+    return ctx.reply(out);
   } catch(e) { ctx.reply('Erro: ' + e.message); }
 });
 
