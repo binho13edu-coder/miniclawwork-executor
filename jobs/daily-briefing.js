@@ -4,6 +4,7 @@ const axios    = require('axios');
 const Database = require('better-sqlite3');
 const { Telegraf } = require('telegraf');
 const { store }    = require('../core/finance');
+const llmSkill    = require('../skills/llm');
 
 const { preflight } = require('../core/db-preflight');
 const JOBS_DB  = './data/jobs.db';
@@ -100,15 +101,49 @@ function getContext() {
   } catch { return '📚 Contexto: indisponível'; }
 }
 
+async function generateAnalysis(btc, dolar, finance) {
+  try {
+    const prompt = `Como analista operacional, analise os dados abaixo e gere uma analise 3/3/3:` + String.fromCharCode(10) + String.fromCharCode(10) +
+      `DADOS:` + String.fromCharCode(10) +
+      `${btc}` + String.fromCharCode(10) +
+      `${dolar}` + String.fromCharCode(10) +
+      `${finance}` + String.fromCharCode(10) + String.fromCharCode(10) +
+      `FORMATO OBRIGATORIO (sem introducao, sem conclusao):` + String.fromCharCode(10) +
+      `📌 Fatos: 3 fatos objetivos baseados apenas nos dados acima.` + String.fromCharCode(10) +
+      `🔍 Observacoes: 3 observacoes sobre variacoes, tendencias ou anomalias.` + String.fromCharCode(10) +
+      `⚡ Sugestoes: 3 sugestoes de acao concretas baseadas nos dados.` + String.fromCharCode(10) + String.fromCharCode(10) +
+      `Regras: seja direto, uma frase por item, numerado 1-2-3 em cada secao.`;
+
+    let analysis = await llmSkill.askLLM(prompt, { history: [], persona: 'Você é um analista operacional direto e objetivo. Gere análises concisas em formato 3/3/3.', maxHistoryTurns: 3 });
+
+    if (!analysis || analysis.length < 50) {
+      console.log('[V80-10] Analise vazia ou curta, tentando regenerar...');
+      analysis = await llmSkill.askLLM(prompt, { history: [], persona: 'Você é um analista operacional direto e objetivo. Gere análises concisas em formato 3/3/3.', maxHistoryTurns: 3 });
+    }
+
+    if (!analysis || analysis.length < 50) {
+      console.log('[V80-10] Segunda tentativa falhou, omitindo secao de analise.');
+      return null;
+    }
+
+    return analysis;
+  } catch (e) {
+    console.error('[V80-10] Erro ao gerar analise:', e.message);
+    return null;
+  }
+}
+
 async function buildBriefing() {
 const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); const brDate = new Date(d.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })); const now = pad(brDate.getDate()) + '/' + pad(brDate.getMonth()+1) + '/' + brDate.getFullYear() + ', ' + pad(brDate.getHours()) + ':' + pad(brDate.getMinutes());
   const [btc, dolar] = await Promise.all([fetchBTC(), fetchDolar()]);
-  return [
+  const finance = getFinance();
+  const analysis = await generateAnalysis(btc, dolar, finance);
+  const sections = [
     `📌 *Briefing Diário — MiniClawwork*`,
     `🕐 ${now}`,
     ``,
     `*1\\. Finanças*`,
-    getFinance(),
+    finance,
     ``,
     `*2\\. Cripto e Dólar*`,
     btc,
@@ -119,7 +154,13 @@ const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); const brDat
     ``,
     `*4\\. Sistema*`,
     `✅ PM2 online | SQLite OK | Bot ativo`,
-  ].join('\n');
+  ];
+  if (analysis) {
+    sections.push(``);
+    sections.push(`*5\\. Análise*`);
+    sections.push(analysis);
+  }
+  return sections.join('\n');
 }
 
 async function run() {
