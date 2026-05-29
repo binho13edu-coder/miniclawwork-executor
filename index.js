@@ -38,39 +38,53 @@ const MAX_LEADS = 20;
 const MAX_HISTORY_TURNS = 3;
 
 async function triggerAndWait(ctx, code, statusText, outputPrefix) {
+    let msg;
     try {
-        const msg = await ctx.reply(statusText);
-        await octokit.rest.actions.createWorkflowDispatch({
-            owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME,
-            workflow_id: 'code_executor.yml', ref: 'main', inputs: { code }
-        });
-        
-        let runId;
-        for (let i = 0; i < 15; i++) {
-            await new Promise(r => setTimeout(r, 3000));
-            const runs = await octokit.rest.actions.listWorkflowRuns({ 
-                owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, 
-                workflow_id: 'code_executor.yml', per_page: 1 
-            });
-            if (runs.data.workflow_runs[0]) { runId = runs.data.workflow_runs[0].id; break; }
-        }
-        
-        if (!runId) throw new Error("Workflow nao iniciou");
+        msg = await ctx.reply(statusText);
+    } catch (e) {
+        console.error('[triggerAndWait] Error sending initial status:', e.message);
+        return;
+    }
 
-        for (let i = 0; i < 40; i++) {
-            const run = await octokit.rest.actions.getWorkflowRun({ 
+    let lastError;
+    const maxTries = 4;
+    
+    for (let attempt = 1; attempt <= maxTries; attempt++) {
+        try {
+            await octokit.rest.actions.createWorkflowDispatch({
+                owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME,
+                workflow_id: 'code_executor.yml', ref: 'main', inputs: { code }
+            });
+            
+            let runId;
+            for (let i = 0; i < 15; i++) {
+                await new Promise(r => setTimeout(r, 3000));
+                const runs = await octokit.rest.actions.listWorkflowRuns({ 
+                    owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, 
+                    workflow_id: 'code_executor.yml', per_page: 1 
+                });
+                if (runs.data.workflow_runs[0]) { runId = runs.data.workflow_runs[0].id; break; }
+            }
+            
+            if (!runId) throw new Error("Workflow nao iniciou");
+
+            for (let i = 0; i < 40; i++) {
+                const run = await octokit.rest.actions.getWorkflowRun({ 
+                    owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, run_id: runId 
+                });
+                if (run.data.status === 'completed') break;
+                if (i === 39) throw new Error("Timeout >2min");
+                await new Promise(r => setTimeout(r, 3000));
+            }
+
+            const arts = await octokit.rest.actions.listWorkflowRunArtifacts({ 
                 owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, run_id: runId 
             });
-            if (run.data.status === 'completed') break;
-            if (i === 39) throw new Error("Timeout >2min");
-            await new Promise(r => setTimeout(r, 3000));
-        }
+            
+            if (arts.data.artifacts.length === 0) {
+                throw new Error("Artifact nao encontrado");
+            }
 
-        const arts = await octokit.rest.actions.listWorkflowRunArtifacts({ 
-            owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, run_id: runId 
-        });
-        
-        if (arts.data.artifacts.length > 0) {
             const dl = await octokit.rest.actions.downloadArtifact({ 
                 owner: process.env.REPO_OWNER, repo: process.env.REPO_NAME, 
                 artifact_id: arts.data.artifacts[0].id, archive_format: 'zip' 
@@ -100,10 +114,40 @@ async function triggerAndWait(ctx, code, statusText, outputPrefix) {
                 await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, outputPrefix + out); 
             }
             if (fs.existsSync('res.zip')) fs.unlinkSync('res.zip');
+            
+            // Sucesso! Sair do loop de retry.
+            return;
+        } catch (e) {
+            lastError = e;
+            console.error(`[triggerAndWait] Attempt ${attempt} failed:`, e.message);
+            
+            if (attempt < maxTries) {
+                const backoffMs = Math.pow(2, attempt) * 1000;
+                
+                try {
+                    const logLine = `${new Date().toISOString()} | Attempt ${attempt} | Error: ${e.message}\n`;
+                    fs.appendFileSync('data/retry.log', logLine);
+                    metrics.trackRetry();
+                } catch (logErr) {
+                    console.error('[triggerAndWait] Error logging retry:', logErr.message);
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
+            } else {
+                try {
+                    const logLine = `${new Date().toISOString()} | Attempt ${attempt} | Error: ${e.message} (Final Failure)\n`;
+                    fs.appendFileSync('data/retry.log', logLine);
+                } catch (logErr) {}
+            }
         }
-    } catch (e) { 
-        console.error('[triggerAndWait]', e.message);
-        ctx.reply("❌ " + e.message); 
+    }
+    
+    // Se todas as tentativas falharem
+    console.error('[triggerAndWait] All attempts failed. Last error:', lastError.message);
+    try {
+        ctx.reply("❌ " + lastError.message);
+    } catch(replyErr) {
+        console.error('[triggerAndWait] Could not reply error to ctx:', replyErr.message);
     }
 }
 
