@@ -1,6 +1,7 @@
 const { execSync } = require('child_process');
 const path = require('path');
 const Database = require('better-sqlite3');
+const { getLastJobSummary } = require('../core/job-steps');
 
 const ALLOWED = ['pm2 jlist'];
 const JOBS_DB = path.join(__dirname, '..', 'data', 'jobs.db');
@@ -39,6 +40,18 @@ function getPm2Data() {
   }
 }
 
+function getJobStepsBreakdown() {
+  try {
+    const summary = getLastJobSummary();
+    if (!summary) return null;
+    const { total, ok, failed, failedSteps } = summary;
+    if (failed === 0) return `Último job: ${ok}/${total} steps OK`;
+    return `Último job: ${ok}/${total} steps (${failedSteps}: falhou)`;
+  } catch (e) {
+    return null;
+  }
+}
+
 function getJobsData() {
   try {
     const db = new Database(JOBS_DB);
@@ -58,6 +71,10 @@ function buildStatus() {
     msg += `⚠️ PM2: ${pm2.error}\n`;
   } else {
     msg += `*PM2:* ${pm2.status} | ⏱ ${pm2.uptime} | 🧠 ${pm2.mem}MB | 🔄 ${pm2.restarts}\n`;
+  }
+  const stepsBreakdown = getJobStepsBreakdown();
+  if (stepsBreakdown) {
+    msg += `*Steps:* ${stepsBreakdown}\n`;
   }
   if (job.error) {
     msg += `⚠️ Jobs: ${job.error}\n`;

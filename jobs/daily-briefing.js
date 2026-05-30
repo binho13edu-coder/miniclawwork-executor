@@ -7,11 +7,13 @@ const { store }    = require('../core/finance');
 const llmSkill    = require('../skills/llm');
 
 const { preflight } = require('../core/db-preflight');
+const { initJobSteps, logStep } = require('../core/job-steps');
 const JOBS_DB  = './data/jobs.db';
 const JOB_NAME = 'daily-briefing';
 const TEST     = process.argv.includes('--test');
 
 if (!preflight(JOBS_DB, JOB_NAME)) { console.error('[daily-briefing] DB preflight failed. Aborting.'); process.exit(1); }
+initJobSteps();
 const db = new Database(JOBS_DB);
 db.exec(`CREATE TABLE IF NOT EXISTS jobs (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,9 +136,12 @@ async function generateAnalysis(btc, dolar, finance) {
 }
 
 async function buildBriefing() {
+  const jobId = 'daily-briefing-' + Date.now();
 const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); const brDate = new Date(d.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })); const now = pad(brDate.getDate()) + '/' + pad(brDate.getMonth()+1) + '/' + brDate.getFullYear() + ', ' + pad(brDate.getHours()) + ':' + pad(brDate.getMinutes());
   const [btc, dolar] = await Promise.all([fetchBTC(), fetchDolar()]);
+  logStep(jobId, 'cripto', 'OK', 'BTC: ' + btc.slice(0, 30));
   const finance = getFinance();
+  logStep(jobId, 'financas', 'OK', finance.slice(0, 50));
   const analysis = await generateAnalysis(btc, dolar, finance);
   const sections = [
     `📌 *Briefing Diário — MiniClawwork*`,
@@ -151,12 +156,14 @@ const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); const brDat
     ``,
     `*3\\. Contexto*`,
     getContext(),
+    logStep(jobId, 'contexto', 'OK', 'Contexto carregado'),
     ``,
     `*4\\. Sistema*`,
     `✅ PM2 online | SQLite OK | Bot ativo`,
   ];
   if (analysis) {
     sections.push(``);
+    logStep(jobId, 'analise', analysis ? 'OK' : 'FAIL', analysis ? 'Analise gerada' : 'Analise omitida');
     sections.push(`*5\\. Análise*`);
     sections.push(analysis);
   }
