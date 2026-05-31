@@ -1,3 +1,4 @@
+const { PERSONAS } = require("./personas"); // V80-13
 /**
  * core/llm.js — MiniClawwork V8.0 (V80-03)
  * Multi-LLM router com Circuit Breaker + Exponential Backoff + Token Bucket + Cache SQLite
@@ -284,8 +285,9 @@ async function ask(prompt, options = {}) {
 
     const messages = [];
     const soulPrompt = getSoulPrompt();
+    const personaSnippet = options.persona && PERSONAS[options.persona] ? PERSONAS[options.persona] : ""; // V80-13
     if (soulPrompt) {
-      messages.push({ role: 'system', content: soulPrompt });
+      messages.push({ role: 'system', content: (personaSnippet ? personaSnippet + "\n\n" : "") + soulPrompt }); // V80-13
     }
     messages.push({ role: 'user', content: prompt });
     const result = await router.chat(messages, options);

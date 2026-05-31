@@ -28,7 +28,7 @@ const bot = new Telegraf(process.env.TELEGRAM_TOKEN, { handlerTimeout: 300000 })
 const OWNER_ID = parseInt(process.env.OWNER_ID);
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-let state = { leads: [], selectedLead: null };
+let state = { leads: [], selectedLead: null, activePersona: null }; // V80-13
 let conversationHistory = [];
 let alertas = [];
 let alertaIdCounter = 1;
@@ -151,14 +151,14 @@ async function triggerAndWait(ctx, code, statusText, outputPrefix) {
     }
 }
 
-const askLLM = async (t) => {
+const askLLM = async (t, opts = {}) => {
   try {
     const res = await coreRouter.handle(t);
     if (res) return res;
   } catch (e) { /* fallback */ }
   return llmSkill.askLLM(t, {
     history: conversationHistory,
-    persona,
+    persona: opts.persona || persona, // V80-13: usa persona ativa ou padrao
     maxHistoryTurns: MAX_HISTORY_TURNS
   });
 };
@@ -404,6 +404,21 @@ bot.use(async (ctx, next) => {
             command = 'document';
         } else if (ctx.message && ctx.message.text) {
             command = 'text';
+        }
+        // V80-13 — Persona por comando
+        const PERSONA_MAP = { "/fin": "financial", "/leads": "leads", "/ctx": "context" };
+        if (PERSONA_MAP[command]) {
+            state.activePersona = PERSONA_MAP[command];
+            console.log(`[V80-13] Persona ativa: ${state.activePersona} (comando: ${command})`);
+        } else if (command === "/persona" && ctx.message && ctx.message.text) {
+            const pArg = ctx.message.text.replace("/persona", "").trim();
+            if (pArg === "reset") {
+                state.activePersona = null;
+                console.log("[V80-13] Persona resetada para default.");
+            } else if (pArg === "list") {
+                state.activePersona = null;
+                console.log("[V80-13] Listando personas.");
+            }
         }
         metrics.track(command, duration);
     }
@@ -794,7 +809,7 @@ Retorne no formato exato:
         }
     }
 
-    await feedback.sendWithFeedback(ctx, await agents.run(t, { history: conversationHistory, persona, maxHistoryTurns: MAX_HISTORY_TURNS }));
+    await feedback.sendWithFeedback(ctx, await agents.run(t, { history: conversationHistory, persona: state.activePersona || persona, maxHistoryTurns: MAX_HISTORY_TURNS })); // V80-13
 });
 
 

@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { PERSONAS } = require('../core/personas'); // V80-13
 const fs = require('fs');
 const path = require('path');
 
@@ -51,11 +52,12 @@ const PROVIDERS = [
   ['https://openrouter.ai/api/v1/chat/completions',          'OPENROUTER_API_KEY', 'mistralai/mistral-7b-instruct'],
 ];
 
-const askLLM = async (t, { history, persona, maxHistoryTurns }) => {
+const askLLM = async (t, { history, persona, maxHistoryTurns }) => { // V80-13: persona pode ser chave de PERSONAS
   history.push({ role: 'user', content: t });
   const recent = history.slice(-(maxHistoryTurns * 2));
   const soul = loadSoul();
-  const systemContent = soul ? (soul + "\n\n---\n\n" + persona) : persona;
+  const personaContent = PERSONAS[persona] || persona; // V80-13: resolve chave ou usa string literal
+  const systemContent = soul ? (soul + "\n\n---\n\n" + personaContent) : personaContent;
   const msgs = [{ role: "system", content: systemContent }, ...recent];
   const maxTok = getMaxTokens(t);
 
