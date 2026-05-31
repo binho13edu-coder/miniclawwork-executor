@@ -576,6 +576,97 @@ bot.command('report', async (ctx) => {
   return ctx.reply(result);
 });
 
+
+// V80-MENU — Menu inline por categoria
+bot.command('menu', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const menuText = `📋 *Menu MiniClawwork*
+
+Escolha uma categoria:`;
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: '💰 Financeiro', callback_data: 'menu_finance' }, { text: '📊 Leads', callback_data: 'menu_leads' }],
+      [{ text: '🔒 Seguranca', callback_data: 'menu_security' }, { text: '🤖 Sistema', callback_data: 'menu_system' }],
+      [{ text: '💱 Crypto', callback_data: 'menu_crypto' }, { text: '📚 Knowledge', callback_data: 'menu_knowledge' }],
+      [{ text: '⚡ Utilitarios', callback_data: 'menu_utils' }]
+    ]
+  };
+  await ctx.reply(menuText, { parse_mode: 'Markdown', reply_markup: keyboard });
+});
+
+bot.action('menu_finance', async (ctx) => {
+  await ctx.editMessageText(`💰 *Financeiro*
+  
+/fin <descricao> <valor> — Registra gasto ou receita
+/dolar — Cotacao do Dolar
+/dominancia — Dominancia BTC no mercado`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
+});
+
+bot.action('menu_leads', async (ctx) => {
+  await ctx.editMessageText(`📊 *Leads*
+  
+/leads <termo> — Busca leads B2B
+/plan <objetivo> — Gera plano de acao estrategico`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
+});
+
+bot.action('menu_security', async (ctx) => {
+  await ctx.editMessageText(`🔒 *Seguranca (V80-14)*
+  
+/recon <dominio> — Reconhecimento de dominio
+/scan <host> — Scan de portas e headers
+/osint <email> — Inteligencia OSINT
+/payload <tipo> <plataforma> — Payload educacional
+/report <alvo> — Relatorio de seguranca completo`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
+});
+
+bot.action('menu_system', async (ctx) => {
+  await ctx.editMessageText(`🤖 *Sistema*
+  
+/status — Status e recursos
+/metrics — Metricas de uso
+/cache — Estatisticas do cache LLM
+/corrigir <texto> — Corrigir ou ensinar o bot`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
+});
+
+bot.action('menu_crypto', async (ctx) => {
+  await ctx.editMessageText(`💱 *Crypto*
+  
+/btc — Cotacao do Bitcoin
+/dominancia — Dominancia BTC
+/alertas — Listar alertas ativos`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
+});
+
+bot.action('menu_knowledge', async (ctx) => {
+  await ctx.editMessageText(`📚 *Knowledge Base*
+  
+/ctx <termo> — Buscar no knowledge base
+/help <termo> — Ajuda semantica
+/dump <filtro> — Triar documentos`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
+});
+
+bot.action('menu_utils', async (ctx) => {
+  await ctx.editMessageText(`⚡ *Utilitarios*
+  
+/exec <codigo> — Executar Python inline
+/git <acao> — Disparar workflow GitHub
+/corrigir <texto> — Ensinar/corrigir o bot`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
+});
+
+bot.action('menu_back', async (ctx) => {
+  const menuText = `📋 *Menu MiniClawwork*
+
+Escolha uma categoria:`;
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: '💰 Financeiro', callback_data: 'menu_finance' }, { text: '📊 Leads', callback_data: 'menu_leads' }],
+      [{ text: '🔒 Seguranca', callback_data: 'menu_security' }, { text: '🤖 Sistema', callback_data: 'menu_system' }],
+      [{ text: '💱 Crypto', callback_data: 'menu_crypto' }, { text: '📚 Knowledge', callback_data: 'menu_knowledge' }],
+      [{ text: '⚡ Utilitarios', callback_data: 'menu_utils' }]
+    ]
+  };
+  await ctx.editMessageText(menuText, { parse_mode: 'Markdown', reply_markup: keyboard });
+});
+
 bot.command('metrics', async (ctx) => {
     if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
     const averages = metrics.getAverages(7);
@@ -907,6 +998,33 @@ bot.on('callback_query', async (ctx) => {
 
 metrics.init();
 initCache();
+
+// V80-MENU — Auto-registro de comandos no BotFather + menu inline
+bot.telegram.setMyCommands([
+  { command: 'menu', description: 'Menu principal com todos os comandos' },
+  { command: 'fin', description: 'Financeiro: registro de gastos/receitas' },
+  { command: 'leads', description: 'Busca leads B2B por termo' },
+  { command: 'status', description: 'Status do sistema e recursos' },
+  { command: 'btc', description: 'Cotacao do Bitcoin em BRL' },
+  { command: 'dolar', description: 'Cotacao do Dolar em BRL' },
+  { command: 'ctx', description: 'Contexto: buscar no knowledge base' },
+  { command: 'help', description: 'Ajuda semantica por termo' },
+  { command: 'plan', description: 'Gerar plano de acao estrategico' },
+  { command: 'git', description: 'Disparar workflow no GitHub' },
+  { command: 'exec', description: 'Executar codigo Python inline' },
+  { command: 'alertas', description: 'Listar alertas de cripto ativos' },
+  { command: 'dominancia', description: 'Dominancia do BTC no mercado' },
+  { command: 'corrigir', description: 'Corrigir ou ensinar algo ao bot' },
+  { command: 'dump', description: 'Triar documentos do knowledge base' },
+  { command: 'metrics', description: 'Metricas de uso dos comandos' },
+  { command: 'cache', description: 'Estatisticas do cache LLM' },
+  { command: 'recon', description: 'Reconhecimento de dominio (V80-14)' },
+  { command: 'osint', description: 'Inteligencia OSINT (V80-14)' },
+  { command: 'scan', description: 'Scan de portas e headers (V80-14)' },
+  { command: 'payload', description: 'Payload educacional (V80-14)' },
+  { command: 'report', description: 'Relatorio de seguranca (V80-14)' }
+]).then(() => console.log("[V80-MENU] Comandos registrados no BotFather"))
+  .catch(e => console.error("[V80-MENU] Erro ao registrar comandos:", e.message));
 
 bot.launch({ dropPendingUpdates: true }).then(() => {
   console.log("MiniClawwork v3.9 online");
