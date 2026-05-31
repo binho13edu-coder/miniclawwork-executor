@@ -10,6 +10,7 @@ const axios = require('axios');
 const fs = require('fs');
 const cryptoSkill = require('./skills/crypto');
 const llmSkill    = require('./skills/llm');
+const hacking     = require('./skills/ethical-hacking'); // V9.0
 const { initCache, getCacheStats } = require('./core/llm.js');
 const coreRouter = require('./core/router');
 const { handleFinance } = require('./core/finance');
@@ -518,6 +519,63 @@ bot.hears(/\b([0-9a-f]{8})\b/i, async (ctx) => {
     ctx.reply('Erro ao recuperar contexto: ' + e.message);
   }
 });
+
+// V9.0 — Comandos Ethical Hacking
+bot.command('recon', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tRecon = throttle(ctx.from.id, '/recon');
+  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /recon novamente.');
+  const target = ctx.message.text.slice(7).trim();
+  if (!target) return ctx.reply('Uso: /recon <dominio>');
+  const result = await hacking.recon(target);
+  hacking.logAudit(ctx.from.id, '/recon', target);
+  return ctx.reply(result);
+});
+
+bot.command('osint', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tOsint = throttle(ctx.from.id, '/osint');
+  if (tOsint.throttled) return ctx.reply('⏳ Aguarde ' + tOsint.waitSeconds + 's antes de usar /osint novamente.');
+  const query = ctx.message.text.slice(7).trim();
+  if (!query) return ctx.reply('Uso: /osint <email|username|telefone>');
+  const result = await hacking.osint(query);
+  hacking.logAudit(ctx.from.id, '/osint', query);
+  return ctx.reply(result);
+});
+
+bot.command('scan', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tScan = throttle(ctx.from.id, '/scan');
+  if (tScan.throttled) return ctx.reply('⏳ Aguarde ' + tScan.waitSeconds + 's antes de usar /scan novamente.');
+  const host = ctx.message.text.slice(6).trim();
+  if (!host) return ctx.reply('Uso: /scan <host>');
+  const result = await hacking.scan(host);
+  hacking.logAudit(ctx.from.id, '/scan', host);
+  return ctx.reply(result);
+});
+
+bot.command('payload', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tPayload = throttle(ctx.from.id, '/payload');
+  if (tPayload.throttled) return ctx.reply('⏳ Aguarde ' + tPayload.waitSeconds + 's antes de usar /payload novamente.');
+  const args = ctx.message.text.slice(9).trim().split(' ');
+  if (args.length < 2) return ctx.reply('Uso: /payload <tipo> <plataforma>');
+  const result = await hacking.payload(args[0], args[1]);
+  hacking.logAudit(ctx.from.id, '/payload', args[0] + '/' + args[1]);
+  return ctx.reply(result);
+});
+
+bot.command('report', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tReport = throttle(ctx.from.id, '/report');
+  if (tReport.throttled) return ctx.reply('⏳ Aguarde ' + tReport.waitSeconds + 's antes de usar /report novamente.');
+  const target = ctx.message.text.slice(8).trim();
+  if (!target) return ctx.reply('Uso: /report <alvo>');
+  const result = await hacking.report(target);
+  hacking.logAudit(ctx.from.id, '/report', target);
+  return ctx.reply(result);
+});
+
 bot.command('metrics', async (ctx) => {
     if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
     const averages = metrics.getAverages(7);
