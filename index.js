@@ -1,6 +1,18 @@
 require('dotenv').config();
 // Validação defensiva
 const REQUIRED_ENV = ['TELEGRAM_TOKEN','GITHUB_TOKEN','OWNER_ID','OPENROUTER_API_KEY'];
+
+// V80-15+ — Helpers para novos modulos
+function sanitizeInput(input) {
+  return String(input).replace(/[^a-zA-Z0-9.\-_@\/]/g, "").trim().substring(0, 200);
+}
+function sanitizeDomain(input) {
+  return String(input).replace(/[^a-zA-Z0-9.\-]/g, "").trim().toLowerCase();
+}
+function sanitizeEmail(input) {
+  return String(input).replace(/[^a-zA-Z0-9.@\-_]/g, "").trim().toLowerCase();
+}
+
 console.log('Env OK | OWNER_ID:', process.env.OWNER_ID);
 
 const { Telegraf } = require('telegraf');
@@ -588,7 +600,7 @@ Escolha uma categoria:`;
       [{ text: '💰 Financeiro', callback_data: 'menu_finance' }, { text: '📊 Leads', callback_data: 'menu_leads' }],
       [{ text: '🔒 Seguranca', callback_data: 'menu_security' }, { text: '🤖 Sistema', callback_data: 'menu_system' }],
       [{ text: '💱 Crypto', callback_data: 'menu_crypto' }, { text: '📚 Knowledge', callback_data: 'menu_knowledge' }],
-      [{ text: '⚡ Utilitarios', callback_data: 'menu_utils' }]
+      [{ text: '⚡ Utilitarios', callback_data: 'menu_utils' }, { text: '💰 Monetizacao', callback_data: 'menu_revenue' }]
     ]
   };
   await ctx.reply(menuText, { parse_mode: 'Markdown', reply_markup: keyboard });
@@ -652,6 +664,19 @@ bot.action('menu_utils', async (ctx) => {
 /corrigir <texto> — Ensinar/corrigir o bot`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
 });
 
+
+bot.action('menu_revenue', async (ctx) => {
+  await ctx.editMessageText(`💰 *Monetizacao (V80-17 a V80-24)*
+  
+/apiarbitrage <niche> — APIs gratuitas de alto valor
+/domainflipper <keyword> — Dominios expirados
+/newsletterhunter <niche> — Newsletters de nicho
+/templategen <tipo> <tema> — Templates Notion/Airtable/Excel
+/promptmarket <niche> — Prompts premium por nicho
+/leadscoring <dados> — Scoring BANT de leads
+/proposalgen <dados> — Propostas comerciais
+/invoicetrack <acao> — Rastreamento de faturas`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
+});
 bot.action('menu_back', async (ctx) => {
   const menuText = `📋 *Menu MiniClawwork*
 
@@ -661,10 +686,324 @@ Escolha uma categoria:`;
       [{ text: '💰 Financeiro', callback_data: 'menu_finance' }, { text: '📊 Leads', callback_data: 'menu_leads' }],
       [{ text: '🔒 Seguranca', callback_data: 'menu_security' }, { text: '🤖 Sistema', callback_data: 'menu_system' }],
       [{ text: '💱 Crypto', callback_data: 'menu_crypto' }, { text: '📚 Knowledge', callback_data: 'menu_knowledge' }],
-      [{ text: '⚡ Utilitarios', callback_data: 'menu_utils' }]
+      [{ text: '⚡ Utilitarios', callback_data: 'menu_utils' }, { text: '💰 Monetizacao', callback_data: 'menu_revenue' }]
     ]
   };
   await ctx.editMessageText(menuText, { parse_mode: 'Markdown', reply_markup: keyboard });
+});
+
+
+// V80-15 — Technical Debt Analyzer
+bot.command('techdebt', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tRecon = throttle(ctx.from.id, '/techdebt');
+  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /techdebt novamente.');
+  const target = ctx.message.text.slice(10).trim();
+  if (!target) return ctx.reply('Uso: /techdebt <usuario/repo> ou <URL>');
+  const repo = sanitizeInput(target);
+  ctx.reply('🔍 Analisando technical debt de ' + repo + '...');
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/techdebt.py "' + repo + '"', { encoding: 'utf8', timeout: 45000 });
+    const data = JSON.parse(result);
+    let out = '🔍 *Technical Debt — ' + data.repo + '*\n\n';
+    out += '📊 *Score Geral:* ' + data.score + '/10\n';
+    out += '📅 *Último commit:* ' + data.last_commit + '\n';
+    out += '📦 *Dependências:* ' + data.deps_count + '\n\n';
+    if (data.findings.length) {
+      out += '*Findings:*\n';
+      data.findings.forEach(f => {
+        out += '• [' + f.severity + '] ' + f.category + ': ' + f.description + '\n';
+      });
+    } else {
+      out += '✅ Nenhum finding critico encontrado.\n';
+    }
+    out += '\n⚠️ Analise passiva via APIs publicas.';
+    return ctx.reply(out);
+  } catch (e) {
+    return ctx.reply('❌ Erro na analise: ' + e.message);
+  }
+});
+
+// V80-16 — Hacker Pro Suite Passive
+bot.command('hackpro', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tRecon = throttle(ctx.from.id, '/hackpro');
+  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /hackpro novamente.');
+  const args = ctx.message.text.slice(9).trim().split(' ');
+  const target = sanitizeDomain(args[0] || '');
+  const mode = (args[1] || 'recon').toLowerCase();
+  if (!target) return ctx.reply('Uso: /hackpro <dominio> <recon|owasp|api|report>');
+  const validModes = ['recon', 'owasp', 'api', 'report'];
+  if (!validModes.includes(mode)) return ctx.reply('Modo invalido. Use: recon, owasp, api, report');
+  ctx.reply('🔒 HackerPro [' + mode + '] em ' + target + '...');
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/hackpro.py "' + target + '" ' + mode, { encoding: 'utf8', timeout: 60000 });
+    const data = JSON.parse(result);
+    let out = '🔒 *HackerPro — ' + mode.toUpperCase() + '*\n*Alvo:* ' + target + '\n\n';
+    if (mode === 'recon') {
+      out += '*Subdominios:* ' + (data.subdomains?.length || 0) + '\n';
+      out += '*Tech Stack:* ' + (data.tech?.join(', ') || 'N/A') + '\n';
+      out += '*Certificados:* ' + (data.certs?.length || 0) + ' encontrados\n';
+    } else if (mode === 'owasp') {
+      out += '*OWASP Checks:*\n';
+      (data.checks || []).forEach(c => {
+        out += '• ' + c.check + ': ' + (c.found ? '⚠️ ' + c.severity : '✅ OK') + '\n';
+      });
+    } else if (mode === 'api') {
+      out += '*API Endpoints:* ' + (data.endpoints?.length || 0) + '\n';
+      out += '*Auth:* ' + (data.auth_issues?.length || 0) + ' issues\n';
+    } else if (mode === 'report') {
+      out += '*CVSS Medio:* ' + (data.cvss_avg || 'N/A') + '\n';
+      out += '*Findings:* ' + (data.findings?.length || 0) + '\n';
+      out += '*Risco:* ' + (data.risk_level || 'N/A') + '\n';
+    }
+    out += '\n⚠️ Apenas avaliacao passiva. Nenhum exploit executado.';
+    return ctx.reply(out);
+  } catch (e) {
+    return ctx.reply('❌ Erro: ' + e.message);
+  }
+});
+
+// V80-17 — API Arbitrage
+bot.command('apiarbitrage', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tRecon = throttle(ctx.from.id, '/apiarbitrage');
+  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /apiarbitrage novamente.');
+  const niche = ctx.message.text.slice(13).trim() || 'general';
+  ctx.reply('🔌 Buscando APIs gratuitas de alto valor no nicho: ' + niche + '...');
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/apiarbitrage.py "' + sanitizeInput(niche) + '"', { encoding: 'utf8', timeout: 45000 });
+    const data = JSON.parse(result);
+    let out = '🔌 *API Arbitrage — ' + niche + '*\n\n';
+    out += '*APIs encontradas:* ' + data.apis.length + '\n\n';
+    data.apis.slice(0, 10).forEach(api => {
+      out += '• *' + api.name + '*\n';
+      out += '  ' + api.description + '\n';
+      out += '  💰 Valor: ' + api.value + ' | 🆓 Free tier: ' + api.free_tier + '\n\n';
+    });
+    if (data.apis.length > 10) out += '...e mais ' + (data.apis.length - 10) + ' APIs.\n';
+    out += '\n💡 Dica: Revenda via micro-SaaS ou agregadores.';
+    return ctx.reply(out);
+  } catch (e) {
+    return ctx.reply('❌ Erro: ' + e.message);
+  }
+});
+
+// V80-18 — Domain Flipper
+bot.command('domainflipper', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tRecon = throttle(ctx.from.id, '/domainflipper');
+  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /domainflipper novamente.');
+  const keyword = ctx.message.text.slice(14).trim() || 'tech';
+  ctx.reply('🔎 Buscando dominios expirados com potencial: ' + keyword + '...');
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/domainflipper.py "' + sanitizeInput(keyword) + '"', { encoding: 'utf8', timeout: 45000 });
+    const data = JSON.parse(result);
+    let out = '🔎 *Domain Flipper — ' + keyword + '*\n\n';
+    out += '*Dominios encontrados:* ' + data.domains.length + '\n\n';
+    data.domains.slice(0, 8).forEach(d => {
+      out += '• *' + d.domain + '*\n';
+      out += '  DA: ' + (d.da || 'N/A') + ' | PA: ' + (d.pa || 'N/A') + '\n';
+      out += '  Idade: ' + (d.age || 'N/A') + ' anos | Backlinks: ' + (d.backlinks || 'N/A') + '\n';
+      out += '  💡 Potencial: ' + d.potential + '\n\n';
+    });
+    out += '\n⚠️ Verifique disponibilidade real antes de registrar.';
+    return ctx.reply(out);
+  } catch (e) {
+    return ctx.reply('❌ Erro: ' + e.message);
+  }
+});
+
+// V80-19 — Newsletter Hunter
+bot.command('newsletterhunter', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tRecon = throttle(ctx.from.id, '/newsletterhunter');
+  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /newsletterhunter novamente.');
+  const niche = ctx.message.text.slice(17).trim() || 'business';
+  ctx.reply('📰 Cacando newsletters no nicho: ' + niche + '...');
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/newsletterhunter.py "' + sanitizeInput(niche) + '"', { encoding: 'utf8', timeout: 45000 });
+    const data = JSON.parse(result);
+    let out = '📰 *Newsletter Hunter — ' + niche + '*\n\n';
+    out += '*Newsletters encontradas:* ' + data.newsletters.length + '\n\n';
+    data.newsletters.slice(0, 10).forEach(n => {
+      out += '• *' + n.name + '*\n';
+      out += '  ' + n.description + '\n';
+      out += '  👥 Est. subscribers: ' + (n.subscribers || 'N/A') + '\n';
+      out += '  🔗 ' + n.url + '\n\n';
+    });
+    out += '\n💡 Oportunidade: Venda de leads ou parcerias.';
+    return ctx.reply(out);
+  } catch (e) {
+    return ctx.reply('❌ Erro: ' + e.message);
+  }
+});
+
+// V80-20 — Template Generator
+bot.command('templategen', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tRecon = throttle(ctx.from.id, '/templategen');
+  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /templategen novamente.');
+  const args = ctx.message.text.slice(12).trim().split(' ');
+  const type = (args[0] || 'notion').toLowerCase();
+  const topic = args.slice(1).join(' ') || 'project management';
+  const validTypes = ['notion', 'airtable', 'excel', 'sheets'];
+  if (!validTypes.includes(type)) return ctx.reply('Tipo invalido. Use: notion, airtable, excel, sheets');
+  ctx.reply('📐 Gerando template ' + type + ' sobre: ' + topic + '...');
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/templategen.py "' + type + '" "' + sanitizeInput(topic) + '"', { encoding: 'utf8', timeout: 45000 });
+    const data = JSON.parse(result);
+    let out = '📐 *Template Generator — ' + type.toUpperCase() + '*\n';
+    out += '*Tema:* ' + topic + '\n\n';
+    out += data.template + '\n\n';
+    out += '💡 Use em ' + type + ' e venda no Gumroad/Payhip.';
+    return ctx.reply(out);
+  } catch (e) {
+    return ctx.reply('❌ Erro: ' + e.message);
+  }
+});
+
+// V80-21 — Prompt Market
+bot.command('promptmarket', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tRecon = throttle(ctx.from.id, '/promptmarket');
+  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /promptmarket novamente.');
+  const niche = ctx.message.text.slice(13).trim() || 'copywriting';
+  ctx.reply('💬 Catalogando prompts premium para: ' + niche + '...');
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/promptmarket.py "' + sanitizeInput(niche) + '"', { encoding: 'utf8', timeout: 45000 });
+    const data = JSON.parse(result);
+    let out = '💬 *Prompt Market — ' + niche + '*\n\n';
+    out += '*Prompts encontrados:* ' + data.prompts.length + '\n\n';
+    data.prompts.slice(0, 8).forEach(p => {
+      out += '• *' + p.title + '* (' + p.category + ')\n';
+      out += '  ' + p.prompt.substring(0, 150) + '...\n';
+      out += '  💰 Est. valor: ' + p.value + '\n\n';
+    });
+    out += '\n💡 Venda no PromptBase, Etsy ou Gumroad.';
+    return ctx.reply(out);
+  } catch (e) {
+    return ctx.reply('❌ Erro: ' + e.message);
+  }
+});
+
+// V80-22 — Lead Scoring (BANT)
+bot.command('leadscoring', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tRecon = throttle(ctx.from.id, '/leadscoring');
+  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /leadscoring novamente.');
+  const raw = ctx.message.text.slice(12).trim();
+  if (!raw) return ctx.reply('Uso: /leadscoring <nome> | <email> | <empresa> | <orcamento> | <autoridade> | <necessidade> | <timing>');
+  const parts = raw.split('|').map(s => s.trim());
+  const lead = {
+    name: parts[0] || 'N/A',
+    email: sanitizeEmail(parts[1] || ''),
+    company: parts[2] || 'N/A',
+    budget: parts[3] || 'N/A',
+    authority: parts[4] || 'N/A',
+    need: parts[5] || 'N/A',
+    timing: parts[6] || 'N/A'
+  };
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync("python3 /home/opc/miniclawwork-executor/scripts/leadscoring.py '" + JSON.stringify(lead) + "'", { encoding: 'utf8', timeout: 30000 });
+    const data = JSON.parse(result);
+    let out = '🎯 *Lead Scoring — ' + lead.name + '*\n\n';
+    out += '*Score BANT:* ' + data.score + '/100\n';
+    out += '*Qualificacao:* ' + data.qualification + '\n\n';
+    out += '*Breakdown:*\n';
+    out += '💰 Budget: ' + data.breakdown.budget + '/25\n';
+    out += '👔 Authority: ' + data.breakdown.authority + '/25\n';
+    out += '🔥 Need: ' + data.breakdown.need + '/25\n';
+    out += '⏰ Timing: ' + data.breakdown.timing + '/25\n\n';
+    out += '*Recomendacao:* ' + data.recommendation;
+    return ctx.reply(out);
+  } catch (e) {
+    return ctx.reply('❌ Erro: ' + e.message);
+  }
+});
+
+// V80-23 — Proposal Generator
+bot.command('proposalgen', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tRecon = throttle(ctx.from.id, '/proposalgen');
+  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /proposalgen novamente.');
+  const raw = ctx.message.text.slice(12).trim();
+  if (!raw) return ctx.reply('Uso: /proposalgen <cliente> | <servico> | <valor> | <prazo> | <escopo>');
+  const parts = raw.split('|').map(s => s.trim());
+  const proposal = {
+    client: parts[0] || 'Cliente',
+    service: parts[1] || 'Servico',
+    value: parts[2] || 'R$ 0,00',
+    deadline: parts[3] || '30 dias',
+    scope: parts[4] || 'Escopo padrao'
+  };
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync("python3 /home/opc/miniclawwork-executor/scripts/proposalgen.py '" + JSON.stringify(proposal) + "'", { encoding: 'utf8', timeout: 30000 });
+    const data = JSON.parse(result);
+    let out = '📄 *Proposta Comercial*\n\n';
+    out += '*Para:* ' + data.client + '\n';
+    out += '*Servico:* ' + data.service + '\n';
+    out += '*Investimento:* ' + data.value + '\n';
+    out += '*Prazo:* ' + data.deadline + '\n\n';
+    out += '*Escopo:*\n' + data.scope_text + '\n\n';
+    out += '*Termos:*\n' + data.terms + '\n\n';
+    out += '✅ Pronta para envio. Salve como PDF no Canva.';
+    return ctx.reply(out);
+  } catch (e) {
+    return ctx.reply('❌ Erro: ' + e.message);
+  }
+});
+
+// V80-24 — Invoice Tracker
+bot.command('invoicetrack', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const tRecon = throttle(ctx.from.id, '/invoicetrack');
+  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /invoicetrack novamente.');
+  const args = ctx.message.text.slice(13).trim().split(' ');
+  const action = (args[0] || 'list').toLowerCase();
+  if (action === 'add') {
+    const raw = args.slice(1).join(' ');
+    const parts = raw.split('|').map(s => s.trim());
+    if (parts.length < 4) return ctx.reply('Uso: /invoicetrack add <cliente> | <valor> | <vencimento> | <descricao>');
+    const invoice = { client: parts[0], value: parts[1], due: parts[2], desc: parts[3] };
+    try {
+      const { execSync } = require('child_process');
+      execSync("python3 /home/opc/miniclawwork-executor/scripts/invoicetrack.py add '" + JSON.stringify(invoice) + "'", { encoding: 'utf8', timeout: 15000 });
+      return ctx.reply('✅ Fatura adicionada: ' + invoice.client + ' — ' + invoice.value + ' (venc: ' + invoice.due + ')');
+    } catch (e) { return ctx.reply('❌ Erro: ' + e.message); }
+  } else if (action === 'list') {
+    try {
+      const { execSync } = require('child_process');
+      const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/invoicetrack.py list', { encoding: 'utf8', timeout: 15000 });
+      const data = JSON.parse(result);
+      if (!data.invoices.length) return ctx.reply('📋 Nenhuma fatura cadastrada.');
+      let out = '📋 *Faturas*\n\n';
+      data.invoices.forEach(inv => {
+        const status = inv.status === 'overdue' ? '🔴 Atrasada' : (inv.status === 'paid' ? '✅ Paga' : '🟢 Pendente');
+        out += '• ' + inv.client + ' — ' + inv.value + ' (venc: ' + inv.due + ') ' + status + '\n';
+      });
+      return ctx.reply(out);
+    } catch (e) { return ctx.reply('❌ Erro: ' + e.message); }
+  } else if (action === 'pay') {
+    const id = args[1];
+    if (!id) return ctx.reply('Uso: /invoicetrack pay <id>');
+    try {
+      const { execSync } = require('child_process');
+      execSync('python3 /home/opc/miniclawwork-executor/scripts/invoicetrack.py pay ' + id, { encoding: 'utf8', timeout: 15000 });
+      return ctx.reply('✅ Fatura #' + id + ' marcada como paga.');
+    } catch (e) { return ctx.reply('❌ Erro: ' + e.message); }
+  } else {
+    return ctx.reply('Uso: /invoicetrack list | add <cliente> | <valor> | <vencimento> | <descricao> | pay <id>');
+  }
 });
 
 bot.command('metrics', async (ctx) => {
@@ -1022,7 +1361,17 @@ bot.telegram.setMyCommands([
   { command: 'osint', description: 'Inteligencia OSINT (V80-14)' },
   { command: 'scan', description: 'Scan de portas e headers (V80-14)' },
   { command: 'payload', description: 'Payload educacional (V80-14)' },
-  { command: 'report', description: 'Relatorio de seguranca (V80-14)' }
+  { command: 'report', description: 'Relatorio de seguranca (V80-14)' },
+  { command: 'techdebt', description: 'Analise technical debt (V80-15)' },
+  { command: 'hackpro', description: 'Hacker Pro Suite passive (V80-16)' },
+  { command: 'apiarbitrage', description: 'APIs gratuitas de alto valor (V80-17)' },
+  { command: 'domainflipper', description: 'Dominios expirados com potencial (V80-18)' },
+  { command: 'newsletterhunter', description: 'Newsletters de nicho (V80-19)' },
+  { command: 'templategen', description: 'Gerador de templates (V80-20)' },
+  { command: 'promptmarket', description: 'Catalogo de prompts premium (V80-21)' },
+  { command: 'leadscoring', description: 'Scoring BANT de leads (V80-22)' },
+  { command: 'proposalgen', description: 'Gerador de propostas (V80-23)' },
+  { command: 'invoicetrack', description: 'Rastreamento de faturas (V80-24)' }
 ]).then(() => console.log("[V80-MENU] Comandos registrados no BotFather"))
   .catch(e => console.error("[V80-MENU] Erro ao registrar comandos:", e.message));
 
