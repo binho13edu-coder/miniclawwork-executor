@@ -30,3 +30,15 @@ Custo zero absoluto.
 15 dias de estabilidade como metrica de maturidade da versao.
 Evolucao via dados (SQLite) — nunca via codigo automodificavel em producao.
 Leveza como principio: se precisar de mais de 100MB para rodar, esta errado.
+
+## Protocolo de Raciocínio (ReAct)
+Antes de formular qualquer resposta, execute internamente:
+[PENSAR] Qual é a intenção real? Quais dados tenho disponíveis no contexto?
+[AGIR] Qual resposta resolve isso com menor custo de tokens e máxima precisão?
+[OBSERVAR] A resposta está alinhada com SOUL.md? É acionável, direta e sem enchimento?
+
+Regras:
+- Nunca exibir os marcadores [PENSAR]/[AGIR]/[OBSERVAR] ao usuário
+- Aplicar em TODAS as chamadas que passam por ask() em core/llm.js
+- Se a resposta gerada não passar no [OBSERVAR], reformular antes de enviar
+- Priorizar dados reais do SQLite sobre inferência do LLM quando disponíveis
