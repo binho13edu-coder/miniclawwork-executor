@@ -5,6 +5,7 @@
  */
 
 const Database = require('better-sqlite3');
+const { classifyChunk } = require('./para-classifier'); // V90-02
 const path = require('path');
 
 const DB_PATH     = process.env.MEMORY_DB_PATH    || path.join(__dirname, '../data/memory.db');
@@ -277,4 +278,14 @@ const memory = new MemoryStore();
 process.on('SIGINT',  () => { memory.close(); process.exit(0); });
 process.on('SIGTERM', () => { memory.close(); process.exit(0); });
 
-module.exports = { MemoryStore, memory };
+
+// V90-02 — recallByPara para filtro P.A.R.A.
+function recallByPara(category, limit = 10) {
+  const docsDb = require('path').join(__dirname, '..', 'data', 'documents.db');
+  const db = new Database(docsDb);
+  const rows = db.prepare('SELECT id, source, content, importance, para_category, ts FROM document_chunks WHERE para_category = ? ORDER BY ts DESC LIMIT ?').all(category, limit);
+  db.close();
+  return rows;
+}
+
+module.exports = { MemoryStore, memory, recallByPara };

@@ -45,3 +45,28 @@ module.exports = {
     saveCorrection,
     ensureSchema
 };
+
+// V90-NEW-C — Listar e desfazer correções
+const Database = require('better-sqlite3');
+const path = require('path');
+const DOCS_DB = path.join(__dirname, '..', 'data', 'documents.db');
+
+function listCorrections(limit = 10) {
+  const db = new Database(DOCS_DB);
+  const rows = db.prepare('SELECT id, substr(content,1,60) as preview, ts FROM corrections ORDER BY ts DESC LIMIT ?').all(limit);
+  db.close();
+  return rows;
+}
+
+function deleteCorrection(id) {
+  const db = new Database(DOCS_DB);
+  const row = db.prepare('SELECT id, importance FROM corrections WHERE id = ?').get(id);
+  if (!row) return { ok: false, error: 'Correção não encontrada' };
+  if (row.importance > 10) return { ok: false, error: 'Correção protegida (importance > 10)' };
+  db.prepare('DELETE FROM corrections WHERE id = ?').run(id);
+  db.close();
+  return { ok: true, id };
+}
+
+module.exports.listCorrections = listCorrections;
+module.exports.deleteCorrection = deleteCorrection;
