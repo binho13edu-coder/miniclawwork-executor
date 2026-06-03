@@ -914,6 +914,37 @@ bot.command('leadscoring', async (ctx) => {
     out += '🔥 Need: ' + data.breakdown.need + '/25\n';
     out += '⏰ Timing: ' + data.breakdown.timing + '/25\n\n';
     out += '*Recomendacao:* ' + data.recommendation;
+    
+    // V90-NEW-Z2 — HITL para scores > 80
+    if (data.score > 80) {
+      // Inserir lead no banco temporariamente para referência do callback
+      const db = new (require('better-sqlite3'))('./data/leads.db');
+      const hashLead = require('./core/lead-validator').hashLead;
+      const leadHash = hashLead(lead.email || lead.name, lead.company);
+      
+      // Verificar se já existe
+      const existing = db.prepare('SELECT id FROM leads WHERE lead_hash = ?').get(leadHash);
+      let leadId;
+      if (existing) {
+        leadId = existing.id;
+      } else {
+        const insert = db.prepare('INSERT INTO leads (nome, email, empresa, lead_hash, resultado) VALUES (?, ?, ?, ?, ?)');
+        const result = insert.run(lead.name, lead.email, lead.company, leadHash, 'aberto');
+        leadId = result.lastInsertRowid;
+      }
+      db.close();
+      
+      return ctx.reply(out, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🚀 Iniciar Prospecção', callback_data: 'hitl_prospect_' + leadId },
+            { text: '⏭️ Ignorar', callback_data: 'hitl_ignore_' + leadId }
+          ]]
+        }
+      });
+    }
+    
     return ctx.reply(out);
   } catch (e) {
     return ctx.reply('❌ Erro: ' + e.message);
@@ -1620,6 +1651,60 @@ bot.on('document', async (ctx) => {
 const feedbackDb = new (require('better-sqlite3'))('./data/feedback.db');
 
 bot.on('callback_query', async (ctx) => {
+  const data = ctx.callbackQuery.data;
+  
+  // V90-NEW-Z2 — HITL lead score > 80
+  if (data.startsWith('hitl_prospect_')) {
+    const leadId = parseInt(data.replace('hitl_prospect_', ''));
+    try {
+      const db = new (require('better-sqlite3'))('./data/leads.db');
+      const lead = db.prepare('SELECT id, nome, empresa, email, telefone, dominio, resultado FROM leads WHERE id = ?').get(leadId);
+      if (!lead) { db.close(); return ctx.answerCbQuery('Lead não encontrado.'); }
+      
+      // Atualizar status para contatado
+      db.prepare('UPDATE leads SET resultado = ? WHERE id = ?').run('contatado', leadId);
+      db.close();
+      
+      await ctx.answerCbQuery('🚀 Prospecção iniciada!');
+      await ctx.editMessageText('🚀 *Prospecção iniciada para ' + lead.nome + '*\nStatus: aberto → contatado', { parse_mode: 'Markdown' });
+      
+      // Gerar brief automaticamente
+      const prompt = `Com base nesses dados de lead, gere um brief de prospecção conciso:
+1. Dor provável (1 frase)
+2. Gancho de abertura (1 frase)
+3. Objeção mais provável e resposta
+4. Próximo passo recomendado
+
+DADOS DO LEAD:
+Nome: ${lead.nome}
+Empresa: ${lead.empresa || 'N/A'}
+Email: ${lead.email || 'N/A'}
+Telefone: ${lead.telefone || 'N/A'}
+Domínio: ${lead.dominio || 'N/A'}
+Status: contatado
+
+Responda em português, direto e sem floreios.`;
+      
+      const { ask } = require('./core/llm');
+      const brief = await ask(prompt, { persona: 'leads', maxTokens: 400, temperature: 0.3 });
+      
+      let out = '🎯 *Brief de Prospecção — ' + lead.nome + '*\n\n';
+      out += brief;
+      await ctx.reply(out, { parse_mode: 'Markdown' });
+      return;
+    } catch(e) {
+      console.error('[HITL] Erro:', e.message);
+      return ctx.answerCbQuery('❌ Erro: ' + e.message);
+    }
+  }
+  
+  if (data.startsWith('hitl_ignore_')) {
+    const leadId = parseInt(data.replace('hitl_ignore_', ''));
+    await ctx.answerCbQuery('⏭️ Lead ignorado.');
+    await ctx.editMessageText('⏭️ Lead ignorado.', { parse_mode: 'Markdown' });
+    return;
+  }
+  
   await feedback.handleCallback(ctx, feedbackDb);
 });
 
