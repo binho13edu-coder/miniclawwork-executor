@@ -25,7 +25,7 @@ const llmSkill    = require('./skills/llm');
 const hacking     = require('./skills/ethical-hacking'); // V9.0
 const { initCache, getCacheStats } = require('./core/llm.js');
 const coreRouter = require('./core/router');
-const { handleFinance } = require('./core/finance');
+const { handleFinance, FinanceStore } = require('./core/finance');
 const { buildStatus } = require('./skills/status');
 const { memory } = require('./core/memory');
 const { ingestDocument } = require('./core/intake.js');
@@ -1171,7 +1171,11 @@ bot.on('text', async (ctx) => {
     if ((m = tl.match(/^\/(analise|analisa)\s+(\w+)/))) return analiseCripto(ctx, m[2]);
     if (tl === '/dominancia' || tl === '/dom') return dominanciaCripto(ctx);
 
-    if (tl === '/fin' || tl.startsWith('/fin ')) { if (_checkThrottle('/fin')) return; return handleFinance(ctx, tl.replace('/fin', '').trim()); }
+    if (tl === '/fin' || tl.startsWith('/fin ')) {
+        // Não aplicar throttle em /fin zerar confirm (fluxo de confirmação)
+        if (!tl.startsWith('/fin zerar confirm') && _checkThrottle('/fin')) return;
+        return handleFinance(ctx, tl.replace('/fin', '').trim());
+    }
     if (tl === '/status') { if (_checkThrottle('/status')) return; return ctx.reply(buildStatus()); }
     if ((m = tl.match(/^\/alerta\s+(\w+)\s*([<>])\s*([\d.,]+)/))) {
         const ativo = m[1].toUpperCase(), op = m[2];
@@ -1200,6 +1204,139 @@ bot.on('text', async (ctx) => {
         return ctx.reply(`Score: ${score}/100. ${score > 50 ? "Contato direto ok." : "Lead frio."}`);
     }
 
+    // V90-NEW-B — /leads status/followup/pipeline
+    if (tl.startsWith('/leads status ')) {
+        if (_checkThrottle('/leads')) return;
+        const args = t.slice(14).trim().split(' ');
+        const id = parseInt(args[0]);
+        const resultado = args[1];
+        const validos = ['aberto','contatado','proposta','fechado','perdido'];
+        if (!id || !resultado || !validos.includes(resultado)) {
+            return ctx.reply('Uso: /leads status <ID> <aberto|contatado|proposta|fechado|perdido>');
+        }
+        try {
+            const db = new (require('better-sqlite3'))('./data/leads.db');
+            const row = db.prepare('SELECT id, nome, resultado FROM leads WHERE id = ?').get(id);
+            if (!row) { db.close(); return ctx.reply('❌ Lead #' + id + ' não encontrado.'); }
+            db.prepare('UPDATE leads SET resultado = ? WHERE id = ?').run(resultado, id);
+            db.close();
+            return ctx.reply('✅ Lead #' + id + ' (' + row.nome + '): ' + row.resultado + ' → ' + resultado);
+        } catch(e) { return ctx.reply('❌ Erro: ' + e.message); }
+    }
+    if (tl.startsWith('/leads followup ')) {
+        if (_checkThrottle('/leads')) return;
+        const args = t.slice(16).trim().split(' ');
+        const id = parseInt(args[0]);
+        const dataStr = args[1];
+        if (!id || !dataStr) return ctx.reply('Uso: /leads followup <ID> <YYYY-MM-DD>');
+        try {
+            const db = new (require('better-sqlite3'))('./data/leads.db');
+            const row = db.prepare('SELECT id, nome FROM leads WHERE id = ?').get(id);
+            if (!row) { db.close(); return ctx.reply('❌ Lead #' + id + ' não encontrado.'); }
+            db.prepare('UPDATE leads SET followup_ts = ? WHERE id = ?').run(dataStr + ' 09:00:00', id);
+            db.close();
+            return ctx.reply('📅 Follow-up agendado: Lead #' + id + ' (' + row.nome + ') → ' + dataStr);
+        } catch(e) { return ctx.reply('❌ Erro: ' + e.message); }
+    }
+    if (tl === '/leads pipeline') {
+        if (_checkThrottle('/leads')) return;
+        try {
+            const db = new (require('better-sqlite3'))('./data/leads.db');
+            const rows = db.prepare('SELECT resultado, COUNT(*) as cnt FROM leads GROUP BY resultado ORDER BY cnt DESC').all();
+            const total = db.prepare('SELECT COUNT(*) as cnt FROM leads').get().cnt;
+            db.close();
+            if (!rows.length) return ctx.reply('📭 Nenhum lead cadastrado.');
+            let out = '📊 *Pipeline de Leads* (' + total + ' total)\\n\\n';
+            const emojis = { aberto: '🔵', contatado: '🟡', proposta: '🟠', fechado: '🟢', perdido: '🔴' };
+            let receitaTotal = 0;
+            rows.forEach(r => {
+                const pct = total > 0 ? Math.round((r.cnt / total) * 100) : 0;
+                out += (emojis[r.resultado] || '⚪') + ' *' + r.resultado + '*: ' + r.cnt + ' (' + pct + '%)\\n';
+            });
+            try {
+                const { FinanceStore } = require('./core/finance');
+                const finance = new FinanceStore();
+                const receita = finance.db.prepare("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='income' AND category='venda'").get();
+                finance.db.close();
+                receitaTotal = receita.total;
+                if (receitaTotal > 0) {
+                    out += '\\n💰 *Receita Gerada:* R$ ' + parseFloat(receitaTotal).toFixed(2);
+                }
+            } catch(e) { }
+            return ctx.reply(out, { parse_mode: 'Markdown' });
+        } catch(e) { return ctx.reply('❌ Erro: ' + e.message); }
+    }
+    
+    // V90-NEW-E — /leads converter <ID> <valor> <descricao>
+    if (tl.startsWith('/leads converter ')) {
+        if (_checkThrottle('/leads')) return;
+        const args = t.slice(17).trim().split(' ');
+        const id = parseInt(args[0]);
+        const valor = parseFloat(args[1]);
+        const descricao = args.slice(2).join(' ') || 'Conversão de lead';
+        if (!id || isNaN(valor) || valor <= 0) {
+            return ctx.reply('Uso: /leads converter <ID> <valor> <descricao>');
+        }
+        try {
+            const db = new (require('better-sqlite3'))('./data/leads.db');
+            const lead = db.prepare('SELECT id, nome, resultado, transaction_id FROM leads WHERE id = ?').get(id);
+            if (!lead) { db.close(); return ctx.reply('❌ Lead #' + id + ' não encontrado.'); }
+            if (lead.transaction_id) { db.close(); return ctx.reply('⚠️ Lead #' + id + ' já convertido (transação #' + lead.transaction_id + ').'); }
+            
+            const { FinanceStore } = require('./core/finance');
+            const finance = new FinanceStore();
+            const tx = finance.add('income', valor, 'venda', descricao, 'Lead: ' + lead.nome);
+            finance.db.close();
+            
+            db.prepare('UPDATE leads SET resultado = ?, transaction_id = ? WHERE id = ?').run('fechado', tx.lastInsertRowid, id);
+            db.close();
+            
+            return ctx.reply('✅ Lead #' + id + ' (' + lead.nome + ') convertido!\n💰 Receita: R$ ' + valor.toFixed(2) + '\n📝 Transação #' + tx.lastInsertRowid);
+        } catch(e) {
+            console.error('[leads converter] Erro:', e.message);
+            return ctx.reply('❌ Erro: ' + e.message);
+        }
+    }
+    
+    // V90-NEW-U — Lead Brief automático via LLM
+    if (tl.startsWith('/leads brief ')) {
+        if (_checkThrottle('/leads')) return;
+        const id = parseInt(t.slice(13).trim());
+        if (!id) return ctx.reply('Uso: /leads brief <ID>');
+        try {
+            const db = new (require('better-sqlite3'))('./data/leads.db');
+            const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
+            db.close();
+            if (!lead) return ctx.reply('❌ Lead #' + id + ' não encontrado.');
+            
+            const prompt = `Com base nesses dados de lead, gere um brief de prospecção conciso:
+1. Dor provável (1 frase)
+2. Gancho de abertura (1 frase)  
+3. Objeção mais provável e resposta
+4. Próximo passo recomendado
+
+DADOS DO LEAD:
+Nome: ${lead.nome}
+Empresa: ${lead.empresa || 'N/A'}
+Email: ${lead.email || 'N/A'}
+Telefone: ${lead.telefone || 'N/A'}
+Domínio: ${lead.dominio || 'N/A'}
+Status: ${lead.resultado || 'aberto'}
+
+Responda em português, direto e sem floreios.`;
+            
+            const { ask } = require('./core/llm');
+            const brief = await ask(prompt, { persona: 'leads', maxTokens: 400, temperature: 0.3 });
+            
+            let out = '🎯 *Brief de Prospecção — ' + lead.nome + '*\\n\\n';
+            out += brief;
+            return ctx.reply(out, { parse_mode: 'Markdown' });
+        } catch(e) {
+            console.error('[leads brief] Erro:', e.message);
+            return ctx.reply('❌ Erro ao gerar brief: ' + e.message);
+        }
+    }
+    
     if (tl.startsWith('/leads ')) { if (_checkThrottle('/leads')) return; return runLeads(ctx, t.slice(7)); }
     if (tl.startsWith('/exec ')) return triggerAndWait(ctx, t.slice(6), "⚙️...", "");
     if (tl === '/dolar') return triggerAndWait(ctx, `import requests\nprint(round(requests.get("https://open.er-api.com/v6/latest/USD").json()['rates']['BRL'],4))`, "💵...", "R$ ");

@@ -13,5 +13,14 @@ module.exports = {
     autorestart: false,
     max_memory_restart: "200M",
     env_file: ".env"
+  }, {
+    name: "leads-pipeline",
+    script: "./jobs/leads-pipeline.js",
+    instances: 1,
+    exec_mode: "fork",
+    cron_restart: "0 7 * * 1",
+    autorestart: false,
+    max_memory_restart: "200M",
+    env_file: ".env"
   }]
 };
