@@ -25,6 +25,7 @@ const llmSkill    = require('./skills/llm');
 const hacking     = require('./skills/ethical-hacking'); // V9.0
 const aiAttack    = require('./skills/ai-attack-simulator'); // AI Attack Simulator
 const hackflow    = require('./skills/hackflow'); // V90-NEW-H Pipeline Hacking
+const trimmer     = require('./jobs/memory-trimmer'); // V90-NEW-A Trimmer TLDR
 const { initCache, getCacheStats } = require('./core/llm.js');
 const coreRouter = require('./core/router');
 const { handleFinance, FinanceStore } = require('./core/finance');
@@ -1309,6 +1310,33 @@ bot.command('hackflow', async (ctx) => {
   }
 });
 
+// V90-NEW-A — Trimmer TLDR (compressão de memória)
+bot.command('trimmer', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const t = throttle(ctx.from.id, '/trimmer');
+  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /trimmer novamente.');
+  
+  ctx.reply('🧹 *Trimmer TLDR iniciado*\\n⏳ Analisando chunks e memórias antigas...', { parse_mode: 'Markdown' });
+  
+  try {
+    const docsResult = await trimmer.trimDocuments();
+    const memResult = await trimmer.trimMemory();
+    
+    let out = '🧹 *Trimmer TLDR — Resultado*\\n\\n';
+    out += '📄 *Documentos:*\\n';
+    out += '  TLDRs criados: ' + docsResult.compressed + '\\n';
+    out += '  Chunks removidos: ' + docsResult.deleted + '\\n\\n';
+    out += '🧠 *Memórias:*\\n';
+    out += '  Removidas: ' + memResult.deleted + '\\n\\n';
+    out += '✅ Limpeza concluída. Chunks antigos foram comprimidos via LLM.';
+    
+    return ctx.reply(out, { parse_mode: 'Markdown' });
+  } catch(e) {
+    console.error('[trimmer] ERRO:', e.message);
+    return ctx.reply('❌ Erro no trimmer: ' + e.message);
+  }
+});
+
 bot.on('text', async (ctx) => {
     const t = ctx.message.text;
     const tl = t.toLowerCase().trim();
@@ -1905,6 +1933,12 @@ bot.telegram.setMyCommands([
   { command: 'invoicetrack', description: 'Rastreamento de faturas (V80-24)' }
 ]).then(() => console.log("[V80-MENU] Comandos registrados no BotFather"))
   .catch(e => console.error("[V80-MENU] Erro ao registrar comandos:", e.message));
+
+// V90-NEW-A — Trimmer TLDR automático a cada 24h
+setInterval(() => {
+  console.log('[TRIMMER] Execução automática iniciada');
+  trimmer.main().catch(e => console.error('[TRIMMER] Erro:', e.message));
+}, 24 * 60 * 60 * 1000);
 
 bot.launch({ dropPendingUpdates: true }).then(() => {
   console.log("MiniClawwork v3.9 online");
