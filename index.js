@@ -23,6 +23,7 @@ const fs = require('fs');
 const cryptoSkill = require('./skills/crypto');
 const llmSkill    = require('./skills/llm');
 const hacking     = require('./skills/ethical-hacking'); // V9.0
+const aiAttack    = require('./skills/ai-attack-simulator'); // AI Attack Simulator
 const { initCache, getCacheStats } = require('./core/llm.js');
 const coreRouter = require('./core/router');
 const { handleFinance, FinanceStore } = require('./core/finance');
@@ -1175,6 +1176,93 @@ bot.command('osint', async (ctx) => {
   } catch(e) { return ctx.reply('❌ Erro: ' + e.message); }
 });
 
+// AI-Driven Attack Simulator
+bot.command('aiattack', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const t = throttle(ctx.from.id, '/aiattack');
+  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /aiattack novamente.');
+  
+  const raw = ctx.message.text.slice(10).trim();
+  if (!raw) return ctx.reply('Uso: /aiattack <target> <scenario>');
+  
+  const parts = raw.split(' ');
+  const target = parts[0];
+  const scenario = parts[1] || 'credential_exfiltration';
+  
+  try {
+    const result = aiAttack.simulateAttack(target, scenario);
+    let out = '🎯 *Ataque Simulado — ' + target + '*\n\n';
+    out += '*Cenário:* ' + scenario + '\n';
+    out += '*Fases:*\n';
+    if (result.phases) {
+      result.phases.forEach(p => {
+        out += '  • ' + p.phase + ' (' + p.technique + ') — ' + p.status + '\n';
+      });
+    }
+    return ctx.reply(out);
+  } catch(e) {
+    return ctx.reply('❌ Erro: ' + e.message);
+  }
+});
+
+bot.command('aimonitor', async (ctx) => { console.log('[DEBUG] aimonitor chamado:', ctx.message.text);
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const t = throttle(ctx.from.id, '/aimonitor');
+  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /aimonitor novamente.');
+  
+  const attackId = ctx.message.text.slice(11).trim();
+  if (!attackId) return ctx.reply('Uso: /aimonitor <attack_id>');
+  
+  try {
+    const result = aiAttack.monitorAttack(attackId);
+    console.log('[aimonitor] result:', JSON.stringify(result));
+    const safeAttackId = attackId.replace(/_/g, '\\_');
+    let out = '📊 *Monitoramento — ' + safeAttackId + '*\n\n';
+    out += '*Fase atual:* ' + result.current_phase + '\n';
+    out += '*Progresso:* ' + result.progress + '%\n';
+    out += '*Duração:* ' + result.duration_seconds + 's\n';
+    out += '*Anomalias:* ' + result.anomalies_detected + '\n';
+    out += '*Defesas bypassadas:* ' + result.defenses_bypassed;
+    console.log('[aimonitor] sending:', out.slice(0,50));
+    const msg = await ctx.reply(out);
+    console.log('[aimonitor] sent OK, msg_id:', msg.message_id);
+  } catch(e) {
+    console.error('[aimonitor] FAIL:', e.message, e.code, e.stack);
+    await ctx.reply('❌ Erro: ' + e.message);
+  }
+});
+
+bot.command('aianalyze', async (ctx) => { console.log('[DEBUG] aianalyze chamado:', ctx.message.text);
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const t = throttle(ctx.from.id, '/aianalyze');
+  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /aianalyze novamente.');
+  
+  const raw = ctx.message.text.slice(10).trim();
+  if (!raw) return ctx.reply('Uso: /aianalyze <JSON do ataque>');
+  
+  try {
+    let attackData = JSON.parse(raw);
+    const result = aiAttack.analyzeResults(attackData);
+    console.log('[aianalyze] result:', JSON.stringify(result).slice(0,100));
+    let out = '📈 *Análise do Ataque*\n\n';
+    out += '*Score de Eficiência:* ' + result.efficiency_score + '/100\n';
+    out += '*Adaptabilidade:* ' + result.adaptability_score + '/100\n';
+    out += '*Nível de Risco:* ' + result.risk_level + '\n\n';
+    out += '*Recomendações:*\n';
+    if (result.recommendations) {
+      result.recommendations.forEach(r => {
+        out += '  • ' + r + '\n';
+      });
+    }
+    console.log('[aianalyze] sending:', out.slice(0,50));
+    const msg = await ctx.reply(out, { parse_mode: 'Markdown' });
+    console.log('[aianalyze] sent OK, msg_id:', msg.message_id);
+  } catch(e) {
+    console.error('[aianalyze] FAIL:', e.message, e.code, e.stack);
+    await ctx.reply('❌ Erro: ' + e.message);
+  }
+});
+
 bot.on('text', async (ctx) => {
     const t = ctx.message.text;
     const tl = t.toLowerCase().trim();
@@ -1294,7 +1382,7 @@ bot.on('text', async (ctx) => {
                     out += '\\n💰 *Receita Gerada:* R$ ' + parseFloat(receitaTotal).toFixed(2);
                 }
             } catch(e) { }
-            return ctx.reply(out, { parse_mode: 'Markdown' });
+            return ctx.reply(out);
         } catch(e) { return ctx.reply('❌ Erro: ' + e.message); }
     }
     
@@ -1361,7 +1449,7 @@ Responda em português, direto e sem floreios.`;
             
             let out = '🎯 *Brief de Prospecção — ' + lead.nome + '*\\n\\n';
             out += brief;
-            return ctx.reply(out, { parse_mode: 'Markdown' });
+            return ctx.reply(out);
         } catch(e) {
             console.error('[leads brief] Erro:', e.message);
             return ctx.reply('❌ Erro ao gerar brief: ' + e.message);
@@ -1458,7 +1546,7 @@ Responda em português, direto e sem floreios.`;
             rows.forEach(r => {
                 out += '`#' + r.id + '` | ' + r.ts + '\n  ' + r.preview + '...\n\n';
             });
-            return ctx.reply(out, { parse_mode: 'Markdown' });
+            return ctx.reply(out);
         }
         if (text.startsWith('desfazer ')) {
             const id = parseInt(text.replace('desfazer', '').trim());
