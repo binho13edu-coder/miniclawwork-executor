@@ -1,7 +1,12 @@
 import json
 import subprocess
 import argparse
+import sys
 from datetime import datetime
+
+# Importa analysis_engine diretamente para evitar subprocess com JSON
+sys.path.insert(0, 'scripts')
+from analysis_engine import analyze_attack
 
 class AIAttackSimulator:
     def __init__(self):
@@ -29,9 +34,8 @@ class AIAttackSimulator:
         return json.loads(result.stdout)
         
     def analyze_results(self, attack_data):
-        cmd = ["python3", "scripts/analysis_engine.py", "--input", json.dumps(attack_data)]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        return json.loads(result.stdout)
+        # Chama diretamente em vez de subprocess
+        return analyze_attack(attack_data)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -48,8 +52,10 @@ if __name__ == "__main__":
     elif args.action == "monitor":
         print(json.dumps(simulator.monitor_attack(args.target)))
     elif args.action == "analyze":
+        # Lê JSON do stdin
+        input_data = sys.stdin.read()
         try:
-            attack_data = json.loads(args.target)
+            attack_data = json.loads(input_data) if input_data else {"orchestrator": {"start_time": datetime.now().isoformat()}}
         except:
             attack_data = {"orchestrator": {"start_time": datetime.now().isoformat()}}
         print(json.dumps(simulator.analyze_results(attack_data)))

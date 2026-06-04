@@ -12,7 +12,6 @@ const SCRIPTS_DIR = path.join(__dirname, '..', 'scripts');
 // Sanitiza input: remove caracteres perigosos do shell
 function sanitize(input) {
   if (typeof input !== 'string') return '';
-  // Remove caracteres que podem ser usados para injection
   return input.replace(/[;&|`$(){}[\]\\'"<>!]/g, '').trim();
 }
 
@@ -24,7 +23,6 @@ function simulateAttack(target, scenario, parameters = null) {
   }
   
   const paramsStr = parameters ? JSON.stringify(parameters) : '{}';
-  // Usa array de args em vez de string para evitar shell injection
   const cmd = [
     'python3',
     path.join(SCRIPTS_DIR, 'ai_attack_simulator.py'),
@@ -58,11 +56,15 @@ function analyzeResults(attackData) {
   const cmd = [
     'python3',
     path.join(SCRIPTS_DIR, 'ai_attack_simulator.py'),
-    '--action', 'analyze',
-    '--target', inputStr
+    '--action', 'analyze'
   ];
   
-  const result = execSync(cmd.join(' '), { encoding: 'utf8', timeout: 30000 });
+  // Passa JSON via stdin para evitar escaping de shell
+  const result = execSync(cmd.join(' '), { 
+    encoding: 'utf8', 
+    timeout: 30000,
+    input: inputStr 
+  });
   return JSON.parse(result);
 }
 

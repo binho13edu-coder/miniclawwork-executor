@@ -24,6 +24,7 @@ const cryptoSkill = require('./skills/crypto');
 const llmSkill    = require('./skills/llm');
 const hacking     = require('./skills/ethical-hacking'); // V9.0
 const aiAttack    = require('./skills/ai-attack-simulator'); // AI Attack Simulator
+const hackflow    = require('./skills/hackflow'); // V90-NEW-H Pipeline Hacking
 const { initCache, getCacheStats } = require('./core/llm.js');
 const coreRouter = require('./core/router');
 const { handleFinance, FinanceStore } = require('./core/finance');
@@ -1263,6 +1264,51 @@ bot.command('aianalyze', async (ctx) => { console.log('[DEBUG] aianalyze chamado
   }
 });
 
+// V90-NEW-H — Pipeline Hacking Integrado
+bot.command('hackflow', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const t = throttle(ctx.from.id, '/hackflow');
+  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /hackflow novamente.');
+  
+  const target = ctx.message.text.slice(9).trim();
+  if (!target) return ctx.reply('Uso: /hackflow <dominio> [scenario]\nEx: /hackflow example.com credential_exfiltration');
+  
+  const args = target.split(' ');
+  const domain = args[0];
+  const scenario = args[1] || 'credential_exfiltration';
+  
+  ctx.reply('🔴 *HackFlow iniciado — ' + domain + '*\n⏳ Executando pipeline: recon → scan → osint → attack → analyze...', { parse_mode: 'Markdown' });
+  
+  try {
+    const results = await hackflow.run(domain, scenario);
+    const report = hackflow.formatReport(results);
+    
+    // Enviar relatório em partes se for muito longo
+    if (report.text.length > 4000) {
+      await ctx.reply(report.text.slice(0, 4000));
+      await ctx.reply(report.text.slice(4000));
+    } else {
+      await ctx.reply(report.text);
+    }
+    
+    // HITL: Se risco > 80, perguntar sobre payload educacional
+    if (report.riskScore > 80) {
+      return ctx.reply('🚨 *Risco Crítico Detectado*', {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🎯 Gerar Payload Educativo', callback_data: 'hackflow_payload_' + domain.replace(/\./g, '_') },
+            { text: '✅ Finalizar', callback_data: 'hackflow_done_' + domain.replace(/\./g, '_') }
+          ]]
+        }
+      });
+    }
+    
+  } catch(e) {
+    console.error('[hackflow] ERRO:', e.message);
+    return ctx.reply('❌ Erro no pipeline: ' + e.message);
+  }
+});
+
 bot.on('text', async (ctx) => {
     const t = ctx.message.text;
     const tl = t.toLowerCase().trim();
@@ -1790,6 +1836,27 @@ Responda em português, direto e sem floreios.`;
     const leadId = parseInt(data.replace('hitl_ignore_', ''));
     await ctx.answerCbQuery('⏭️ Lead ignorado.');
     await ctx.editMessageText('⏭️ Lead ignorado.', { parse_mode: 'Markdown' });
+    return;
+  }
+  
+  // V90-NEW-H — HITL HackFlow payload educacional
+  if (data.startsWith('hackflow_payload_')) {
+    const domain = data.replace('hackflow_payload_', '').replace(/_/g, '.');
+    await ctx.answerCbQuery('🎯 Gerando payload educacional...');
+    await ctx.editMessageText('🎯 *Gerando payload para ' + domain + '*\n⏳ Processando...', { parse_mode: 'Markdown' });
+    try {
+      const result = await hacking.payload('reverse_shell', 'bash');
+      await ctx.reply('🎯 Payload Educativo — ' + domain + '\n\n' + result + '\n\n⚠️ Aviso: Use apenas em ambientes autorizados.');
+    } catch(e) {
+      await ctx.reply('❌ Erro ao gerar payload: ' + e.message);
+    }
+    return;
+  }
+  
+  if (data.startsWith('hackflow_done_')) {
+    const domain = data.replace('hackflow_done_', '').replace(/_/g, '.');
+    await ctx.answerCbQuery('✅ Pipeline finalizado.');
+    await ctx.editMessageText('✅ *HackFlow finalizado para ' + domain + '*\n\nRelatório completo gerado. Use /hackflow para novo pipeline.', { parse_mode: 'Markdown' });
     return;
   }
   
