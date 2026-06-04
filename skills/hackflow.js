@@ -7,7 +7,12 @@
 const hacking = require('./ethical-hacking');
 const aiAttack = require('./ai-attack-simulator');
 
+const VALID_SCENARIOS = ['credential_exfiltration', 'phishing_campaign', 'supply_chain', 'ransomware_sim', 'lateral_movement', 'persistence'];
+
 async function run(target, scenario = 'credential_exfiltration') {
+  if (!VALID_SCENARIOS.includes(scenario)) {
+    throw new Error('Cenário inválido. Use: ' + VALID_SCENARIOS.join(', '));
+  }
   const results = {
     target: target,
     timestamp: new Date().toISOString(),

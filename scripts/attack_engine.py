@@ -47,6 +47,70 @@ def run_attack(target, scenario, parameters=None):
             "technique": "Spear phishing email",
             "status": "completed"
         })
+    elif scenario == "supply_chain":
+        attack_components["phases"].append({
+            "phase": "dependency_recon",
+            "technique": "npm/pip package analysis",
+            "status": "completed"
+        })
+        attack_components["phases"].append({
+            "phase": "compromise",
+            "technique": "Typosquatting package injection",
+            "status": "completed"
+        })
+        attack_components["phases"].append({
+            "phase": "lateral_spread",
+            "technique": "CI/CD pipeline poisoning",
+            "status": "completed"
+        })
+    elif scenario == "ransomware_sim":
+        attack_components["phases"].append({
+            "phase": "initial_access",
+            "technique": "RDP brute force",
+            "status": "completed"
+        })
+        attack_components["phases"].append({
+            "phase": "privilege_escalation",
+            "technique": "Token impersonation",
+            "status": "completed"
+        })
+        attack_components["phases"].append({
+            "phase": "impact",
+            "technique": "AES-256 file encryption",
+            "status": "completed"
+        })
+    elif scenario == "lateral_movement":
+        attack_components["phases"].append({
+            "phase": "reconnaissance",
+            "technique": "Network discovery (nmap)",
+            "status": "completed"
+        })
+        attack_components["phases"].append({
+            "phase": "credential_access",
+            "technique": "Pass-the-hash",
+            "status": "completed"
+        })
+        attack_components["phases"].append({
+            "phase": "lateral_movement",
+            "technique": "PSExec remote execution",
+            "status": "completed"
+        })
+    elif scenario == "persistence":
+        attack_components["phases"].append({
+            "phase": "initial_access",
+            "technique": "Spear phishing",
+            "status": "completed"
+        })
+        attack_components["phases"].append({
+            "phase": "persistence",
+            "technique": "Registry Run Keys",
+            "status": "completed"
+        })
+        attack_components["phases"].append({
+            "phase": "defense_evasion",
+            "technique": "Process injection",
+            "status": "completed"
+        })
     else:
         attack_components["phases"].append({
             "phase": "generic_attack",

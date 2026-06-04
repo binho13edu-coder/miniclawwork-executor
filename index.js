@@ -1184,7 +1184,7 @@ bot.command('aiattack', async (ctx) => {
   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /aiattack novamente.');
   
   const raw = ctx.message.text.slice(10).trim();
-  if (!raw) return ctx.reply('Uso: /aiattack <target> <scenario>');
+  if (!raw) return ctx.reply('Uso: /aiattack <target> <scenario>\nCenários: credential_exfiltration, phishing_campaign, supply_chain, ransomware_sim, lateral_movement, persistence');
   
   const parts = raw.split(' ');
   const target = parts[0];
