@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 const metrics = require('../core/metrics');
+const osint = require('../core/osint'); // V90-NEW-N + V90-NEW-X
 
 const CHECK_INTERVAL = 300000; // 5 minutos
 const COOLDOWN_TIME = 1800000; // 30 minutos
@@ -62,6 +63,74 @@ function checkFailedJobs(bot) {
         console.error('[Watchdog] Database Error:', error.message);
         if (db) try { db.close(); } catch (e) {}
     }
+}
+
+async function processLeadsOSINT(bot) { // V90-NEW-N
+  const dbPath = path.join(__dirname, '..', 'data', 'leads.db');
+  if (!fs.existsSync(dbPath)) return;
+
+  let db;
+  try {
+    db = new Database(dbPath);
+    // Verificar se colunas existem
+    const cols = db.prepare("PRAGMA table_info(leads)").all();
+    const hasLastOsint = cols.some(c => c.name === 'last_osint');
+    const hasTechStack = cols.some(c => c.name === 'tech_stack');
+    if (!hasLastOsint || !hasTechStack) {
+      db.close();
+      return;
+    }
+
+    // Buscar leads elegíveis: score > 70 e last_osint > 7 dias ou NULL
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const leads = db.prepare(`
+      SELECT id, domain, email, score FROM leads 
+      WHERE (score > 70 OR score IS NULL) 
+        AND (last_osint IS NULL OR last_osint < ?)
+        AND (resultado = 'aberto' OR resultado IS NULL)
+      ORDER BY score DESC NULLS LAST LIMIT 2
+    `).all(sevenDaysAgo);
+
+    if (!leads.length) {
+      db.close();
+      return;
+    }
+
+    for (const lead of leads) {
+      const target = lead.domain || lead.email?.split('@')[1];
+      if (!target) continue;
+
+      console.log(`[Watchdog] OSINT para lead ${lead.id}: ${target}`);
+
+      try {
+        // V90-NEW-X: enriquecimento tecnográfico
+        const tech = await osint.enrichTech(target);
+        if (tech.stack.length) {
+          db.prepare('UPDATE leads SET tech_stack = ? WHERE id = ?').run(JSON.stringify(tech.stack), lead.id);
+          console.log(`[Watchdog] Tech stack: ${tech.stack.join(', ')}`);
+        }
+
+        // OSINT defensivo básico
+        const dns = await osint.checkDNS(target);
+        const headers = await osint.checkHeaders(target);
+        
+        // Salvar resultado e timestamp
+        const osintResult = JSON.stringify({ dns, headers, tech: tech.stack, server: tech.server });
+        db.prepare('UPDATE leads SET last_osint = CURRENT_TIMESTAMP WHERE id = ?').run(lead.id);
+        
+        // Alerta silencioso (sem spam — só log)
+        console.log(`[Watchdog] Lead ${lead.id} enriquecido | DNS: ${dns.a?.length || 0} registros | Headers: ${Object.keys(headers.checks || {}).filter(k => headers.checks[k]).join(', ') || 'nenhum'}`);
+      } catch(e) {
+        console.error(`[Watchdog] Erro lead ${lead.id}:`, e.message);
+        db.prepare('UPDATE leads SET last_osint = CURRENT_TIMESTAMP WHERE id = ?').run(lead.id);
+      }
+    }
+
+    db.close();
+  } catch(error) {
+    console.error('[Watchdog] Leads OSINT Error:', error.message);
+    if (db) try { db.close(); } catch (e) {}
+  }
 }
 
 function start(bot) {

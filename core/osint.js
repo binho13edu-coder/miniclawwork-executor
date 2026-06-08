@@ -51,4 +51,44 @@ async function checkHIBP(email) {
   }
 }
 
-module.exports = { checkDNS, checkHeaders, checkHIBP, WARNING };
+
+async function enrichTech(domain) { // V90-NEW-X
+  const https = require('https');
+  return new Promise((resolve) => {
+    const req = https.request('https://' + domain, { method: 'GET', timeout: 15000 }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        const stack = [];
+        const html = data.toLowerCase();
+        const headers = res.headers;
+
+        // Fingerprints tecnológicos
+        if (html.includes('/wp-content/') || html.includes('wp-includes')) stack.push('WordPress');
+        if (html.includes('cdn.shopify.com') || html.includes('shopify')) stack.push('Shopify');
+        if (html.includes('hs-scripts.com') || html.includes('hubspot')) stack.push('HubSpot');
+        if (html.includes('d335luupugsy8c.cloudfront.net') || html.includes('rdstation')) stack.push('RD Station');
+        if (html.includes('googletagmanager.com') || html.includes('gtm-')) stack.push('Google Ads');
+        if (html.includes('facebook.com/tr') || html.includes('fbevents.js')) stack.push('Facebook Pixel');
+        if (html.includes('hotjar.com') || html.includes('hj-')) stack.push('Hotjar');
+        if (html.includes('google-analytics.com') || html.includes('gtag')) stack.push('Google Analytics');
+        if (html.includes('cloudflare')) stack.push('Cloudflare');
+        if (html.includes('aws.amazon.com') || html.includes('amazonaws')) stack.push('AWS');
+
+        resolve({
+          stack,
+          raw_headers: Object.keys(headers).reduce((acc, k) => {
+            acc[k] = headers[k].toString().slice(0, 100);
+            return acc;
+          }, {}),
+          server: headers['server'] || 'desconhecido'
+        });
+      });
+    });
+    req.on('error', () => resolve({ stack: [], error: 'Conexao falhou', raw_headers: {}, server: null }));
+    req.on('timeout', () => { req.destroy(); resolve({ stack: [], error: 'Timeout', raw_headers: {}, server: null }); });
+    req.end();
+  });
+}
+
+module.exports = { checkDNS, checkHeaders, checkHIBP, enrichTech, WARNING };
