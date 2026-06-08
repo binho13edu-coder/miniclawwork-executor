@@ -624,17 +624,17 @@ bot.command('scan', async (ctx) => {
   return ctx.reply(result);
 });
 
-bot.command('payload', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tPayload = throttle(ctx.from.id, '/payload');
-  if (tPayload.throttled) return ctx.reply('⏳ Aguarde ' + tPayload.waitSeconds + 's antes de usar /payload novamente.');
-  const args = ctx.message.text.slice(9).trim().split(' ');
-  if (args.length < 2) return ctx.reply('Uso: /payload <tipo> <plataforma>');
-  const result = await hacking.payload(args[0], args[1]);
-  hacking.logAudit(ctx.from.id, '/payload', args[0] + '/' + args[1]);
-  return ctx.reply(result);
-});
-
+// DISABLED bot.command('payload', async (ctx) => {
+// DISABLED   if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+// DISABLED   const tPayload = throttle(ctx.from.id, '/payload');
+// DISABLED   if (tPayload.throttled) return ctx.reply('⏳ Aguarde ' + tPayload.waitSeconds + 's antes de usar /payload novamente.');
+// DISABLED   const args = ctx.message.text.slice(9).trim().split(' ');
+// DISABLED   if (args.length < 2) return ctx.reply('Uso: /payload <tipo> <plataforma>');
+// DISABLED   const result = await hacking.payload(args[0], args[1]);
+// DISABLED   hacking.logAudit(ctx.from.id, '/payload', args[0] + '/' + args[1]);
+// DISABLED   return ctx.reply(result);
+// DISABLED });
+// DISABLED 
 bot.command('report', async (ctx) => {
   if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const tReport = throttle(ctx.from.id, '/report');
@@ -1244,34 +1244,34 @@ bot.command('osint', async (ctx) => {
 });
 
 // AI-Driven Attack Simulator
-bot.command('aiattack', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const t = throttle(ctx.from.id, '/aiattack');
-  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /aiattack novamente.');
-  
-  const raw = ctx.message.text.slice(10).trim();
-  if (!raw) return ctx.reply('Uso: /aiattack <target> <scenario>\nCenários: credential_exfiltration, phishing_campaign, supply_chain, ransomware_sim, lateral_movement, persistence');
-  
-  const parts = raw.split(' ');
-  const target = parts[0];
-  const scenario = parts[1] || 'credential_exfiltration';
-  
-  try {
-    const result = aiAttack.simulateAttack(target, scenario);
-    let out = '🎯 *Ataque Simulado — ' + target + '*\n\n';
-    out += '*Cenário:* ' + scenario + '\n';
-    out += '*Fases:*\n';
-    if (result.phases) {
-      result.phases.forEach(p => {
-        out += '  • ' + p.phase + ' (' + p.technique + ') — ' + p.status + '\n';
-      });
-    }
-    return ctx.reply(out);
-  } catch(e) {
-    return ctx.reply('❌ Erro: ' + e.message);
-  }
-});
-
+// DISABLED bot.command('aiattack', async (ctx) => {
+// DISABLED   if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+// DISABLED   const t = throttle(ctx.from.id, '/aiattack');
+// DISABLED   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /aiattack novamente.');
+// DISABLED   
+// DISABLED   const raw = ctx.message.text.slice(10).trim();
+// DISABLED   if (!raw) return ctx.reply('Uso: /aiattack <target> <scenario>\nCenários: credential_exfiltration, phishing_campaign, supply_chain, ransomware_sim, lateral_movement, persistence');
+// DISABLED   
+// DISABLED   const parts = raw.split(' ');
+// DISABLED   const target = parts[0];
+// DISABLED   const scenario = parts[1] || 'credential_exfiltration';
+// DISABLED   
+// DISABLED   try {
+// DISABLED     const result = aiAttack.simulateAttack(target, scenario);
+// DISABLED     let out = '🎯 *Ataque Simulado — ' + target + '*\n\n';
+// DISABLED     out += '*Cenário:* ' + scenario + '\n';
+// DISABLED     out += '*Fases:*\n';
+// DISABLED     if (result.phases) {
+// DISABLED       result.phases.forEach(p => {
+// DISABLED         out += '  • ' + p.phase + ' (' + p.technique + ') — ' + p.status + '\n';
+// DISABLED       });
+// DISABLED     }
+// DISABLED     return ctx.reply(out);
+// DISABLED   } catch(e) {
+// DISABLED     return ctx.reply('❌ Erro: ' + e.message);
+// DISABLED   }
+// DISABLED });
+// DISABLED 
 bot.command('aimonitor', async (ctx) => { console.log('[DEBUG] aimonitor chamado:', ctx.message.text);
   if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const t = throttle(ctx.from.id, '/aimonitor');
@@ -1331,51 +1331,51 @@ bot.command('aianalyze', async (ctx) => { console.log('[DEBUG] aianalyze chamado
 });
 
 // V90-NEW-H — Pipeline Hacking Integrado
-bot.command('hackflow', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const t = throttle(ctx.from.id, '/hackflow');
-  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /hackflow novamente.');
-  
-  const target = ctx.message.text.slice(9).trim();
-  if (!target) return ctx.reply('Uso: /hackflow <dominio> [scenario]\nEx: /hackflow example.com credential_exfiltration');
-  
-  const args = target.split(' ');
-  const domain = args[0];
-  const scenario = args[1] || 'credential_exfiltration';
-  
-  ctx.reply('🔴 *HackFlow iniciado — ' + domain + '*\n⏳ Executando pipeline: recon → scan → osint → attack → analyze...', { parse_mode: 'Markdown' });
-  
-  try {
-    const results = await hackflow.run(domain, scenario);
-    const report = hackflow.formatReport(results);
-    
-    // Enviar relatório em partes se for muito longo
-    if (report.text.length > 4000) {
-      await ctx.reply(report.text.slice(0, 4000));
-      await ctx.reply(report.text.slice(4000));
-    } else {
-      await ctx.reply(report.text);
-    }
-    
-    // HITL: Se risco > 80, perguntar sobre payload educacional
-    if (report.riskScore > 80) {
-      return ctx.reply('🚨 *Risco Crítico Detectado*', {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '🎯 Gerar Payload Educativo', callback_data: 'hackflow_payload_' + domain.replace(/\./g, '_') },
-            { text: '✅ Finalizar', callback_data: 'hackflow_done_' + domain.replace(/\./g, '_') }
-          ]]
-        }
-      });
-    }
-    
-  } catch(e) {
-    console.error('[hackflow] ERRO:', e.message);
-    return ctx.reply('❌ Erro no pipeline: ' + e.message);
-  }
-});
-
-// V90-NEW-A — Trimmer TLDR (compressão de memória)
+// DISABLED bot.command('hackflow', async (ctx) => {
+// DISABLED   if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+// DISABLED   const t = throttle(ctx.from.id, '/hackflow');
+// DISABLED   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /hackflow novamente.');
+// DISABLED   
+// DISABLED   const target = ctx.message.text.slice(9).trim();
+// DISABLED   if (!target) return ctx.reply('Uso: /hackflow <dominio> [scenario]\nEx: /hackflow example.com credential_exfiltration');
+// DISABLED   
+// DISABLED   const args = target.split(' ');
+// DISABLED   const domain = args[0];
+// DISABLED   const scenario = args[1] || 'credential_exfiltration';
+// DISABLED   
+// DISABLED   ctx.reply('🔴 *HackFlow iniciado — ' + domain + '*\n⏳ Executando pipeline: recon → scan → osint → attack → analyze...', { parse_mode: 'Markdown' });
+// DISABLED   
+// DISABLED   try {
+// DISABLED     const results = await hackflow.run(domain, scenario);
+// DISABLED     const report = hackflow.formatReport(results);
+// DISABLED     
+// DISABLED     // Enviar relatório em partes se for muito longo
+// DISABLED     if (report.text.length > 4000) {
+// DISABLED       await ctx.reply(report.text.slice(0, 4000));
+// DISABLED       await ctx.reply(report.text.slice(4000));
+// DISABLED     } else {
+// DISABLED       await ctx.reply(report.text);
+// DISABLED     }
+// DISABLED     
+// DISABLED     // HITL: Se risco > 80, perguntar sobre payload educacional
+// DISABLED     if (report.riskScore > 80) {
+// DISABLED       return ctx.reply('🚨 *Risco Crítico Detectado*', {
+// DISABLED         reply_markup: {
+// DISABLED           inline_keyboard: [[
+// DISABLED             { text: '🎯 Gerar Payload Educativo', callback_data: 'hackflow_payload_' + domain.replace(/\./g, '_') },
+// DISABLED             { text: '✅ Finalizar', callback_data: 'hackflow_done_' + domain.replace(/\./g, '_') }
+// DISABLED           ]]
+// DISABLED         }
+// DISABLED       });
+// DISABLED     }
+// DISABLED     
+// DISABLED   } catch(e) {
+// DISABLED     console.error('[hackflow] ERRO:', e.message);
+// DISABLED     return ctx.reply('❌ Erro no pipeline: ' + e.message);
+// DISABLED   }
+// DISABLED });
+// DISABLED 
+// DISABLED // V90-NEW-A — Trimmer TLDR (compressão de memória)
 bot.command('trimmer', async (ctx) => {
   if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const t = throttle(ctx.from.id, '/trimmer');
