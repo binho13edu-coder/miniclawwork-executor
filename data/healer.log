@@ -1,0 +1,6 @@
+[2026-06-08T15:38:16.494Z] === Chunk Healer iniciado ===
+[2026-06-08T15:38:16.586Z] Tabela documents não existe, pulando órfãos
+[2026-06-08T15:38:16.592Z] Coluna is_archived adicionada
+[2026-06-08T15:38:16.592Z] Chunks antigos: 0 para arquivar
+[2026-06-08T15:38:16.667Z] Duplicados: 2 deletados (mantido mais recente)
+[2026-06-08T15:38:16.668Z] === Resumo: 0 órfãos, 0 arquivados, 2 duplicados ===

@@ -26,6 +26,7 @@ const hacking     = require('./skills/ethical-hacking'); // V9.0
 const aiAttack    = require('./skills/ai-attack-simulator'); // AI Attack Simulator
 const hackflow    = require('./skills/hackflow'); // V90-NEW-H Pipeline Hacking
 const trimmer     = require('./jobs/memory-trimmer'); // V90-NEW-A Trimmer TLDR
+const healer      = require('./jobs/chunk-healer'); // V90-NEW-Q Auto-Healing
 const { initCache, getCacheStats } = require('./core/llm.js');
 const coreRouter = require('./core/router');
 const { handleFinance, FinanceStore } = require('./core/finance');
@@ -1396,6 +1397,30 @@ bot.command('trimmer', async (ctx) => {
   }
 });
 
+// V90-NEW-Q — Auto-Healing Chunks
+bot.command('heal', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const t = throttle(ctx.from.id, '/heal');
+  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /heal novamente.');
+  
+  ctx.reply('🔧 *Auto-Healer iniciado*\\n⏳ Verificando chunks órfãos, antigos e duplicados...', { parse_mode: 'Markdown' });
+  
+  try {
+    const result = await healer.main();
+    
+    let out = '🔧 *Auto-Healer — Resultado*\\n\\n';
+    out += '✅ *Órfãos deletados:* ' + result.orphans + '\\n';
+    out += '📦 *Chunks arquivados:* ' + result.archived + '\\n';
+    out += '🗑️ *Duplicados removidos:* ' + result.duplicates + '\\n\\n';
+    out += '⚠️ Chunks arquivados ficam ocultos nas buscas mas preservam conhecimento.';
+    
+    return ctx.reply(out, { parse_mode: 'Markdown' });
+  } catch(e) {
+    console.error('[heal] ERRO:', e.message);
+    return ctx.reply('❌ Erro no healer: ' + e.message);
+  }
+});
+
 bot.on('text', async (ctx) => {
     const t = ctx.message.text;
     const tl = t.toLowerCase().trim();
@@ -1617,7 +1642,23 @@ Responda em português, direto e sem floreios.`;
             } else {
                 prompt = `Usuario perguntou: "${query}"\n\nNenhum comando especifico foi encontrado para esta pergunta.\n\nComo assistente util do MiniClawwork, responda de forma natural e amigavel. Se possivel, sugira comandos relacionados ou explique como o usuario pode conseguir o que deseja. Responda em portugues.`;
             }
-            const response = await llmSkill.askLLM(prompt, { history: [], persona: 'Voce e um assistente util e direto. Explique comandos de forma simples com exemplos praticos.', maxHistoryTurns: 3 });
+            // V90-NEW-Z3 — Buscar no knowledge base como fallback/cruzamento
+            let kbContext = '';
+            let kbSource = null;
+            try {
+                const kdb = new (require('better-sqlite3'))('./data/knowledge/documents.db');
+                const kbRows = kdb.prepare("SELECT dc.id, dc.document_id, dc.chunk_index, dc.content FROM document_chunks dc WHERE dc.content LIKE ? AND (dc.is_archived IS NULL OR dc.is_archived = 0) ORDER BY dc.importance DESC LIMIT 3").all('%' + query + '%');
+                if (kbRows.length) {
+                    kbContext = '\n\nContexto do knowledge base:\n' + kbRows.map(r => `[Doc ${r.document_id}, chunk ${r.chunk_index}]: ${r.content.slice(0,200)}...`).join('\n');
+                    kbSource = kbRows[0]; // Primeira fonte para citação
+                }
+                kdb.close();
+            } catch(e) {
+                console.error('[V90-NEW-Z3] KB search error:', e.message);
+            }
+
+            const finalPrompt = prompt + kbContext + (kbSource ? '\n\nINSTRUCAO: Ao final da resposta, cite a fonte: Fonte: Doc ID ' + kbSource.document_id + ', chunk ' + kbSource.chunk_index : '');
+            const response = await llmSkill.askLLM(finalPrompt, { history: [], persona: 'Voce e um assistente util e direto. Explique comandos de forma simples com exemplos praticos. Se houver contexto do knowledge base, use-o para enriquecer a resposta e cite a fonte no final.', maxHistoryTurns: 3 });
             return ctx.reply(response, { parse_mode: 'Markdown' });
         } catch (e) {
             // Fallback: resposta estatica se LLM falhar
