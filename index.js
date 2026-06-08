@@ -1652,7 +1652,7 @@ Responda em português, direto e sem floreios.`;
             let kbSource = null;
             try {
                 const kdb = new (require('better-sqlite3'))('./data/knowledge/documents.db');
-                const kbRows = kdb.prepare("SELECT dc.id, dc.document_id, dc.chunk_index, dc.content FROM document_chunks dc WHERE dc.content LIKE ? AND (dc.is_archived IS NULL OR dc.is_archived = 0) ORDER BY dc.importance DESC LIMIT 3").all('%' + query + '%');
+                const kbRows = kdb.prepare("SELECT dc.id, dc.document_id, dc.chunk_index, dc.content FROM document_chunks dc WHERE dc.content LIKE ?  ORDER BY dc.importance DESC LIMIT 3").all('%' + query + '%');
                 if (kbRows.length) {
                     kbContext = '\n\nContexto do knowledge base:\n' + kbRows.map(r => `[Doc ${r.document_id}, chunk ${r.chunk_index}]: ${r.content.slice(0,200)}...`).join('\n');
                     kbSource = kbRows[0]; // Primeira fonte para citação
