@@ -219,10 +219,15 @@ const askLLM = async (t, opts = {}) => {
     const res = await coreRouter.handle(t);
     if (res) return res;
   } catch (e) { /* fallback */ }
+  // V90-NEW-S: resolver modelo preferido pela persona ativa
+  const { PERSONAS } = require('./core/personas');
+  const personaKey = opts.persona || state.activePersona || 'default';
+  const personaCfg = PERSONAS[personaKey] || PERSONAS.default;
   return llmSkill.askLLM(t, {
     history: conversationHistory,
-    persona: opts.persona || persona, // V80-13: usa persona ativa ou padrao
-    maxHistoryTurns: MAX_HISTORY_TURNS
+    persona: opts.persona || persona,
+    maxHistoryTurns: MAX_HISTORY_TURNS,
+    model: personaCfg.preferredModel // V90-NEW-S
   });
 };
 

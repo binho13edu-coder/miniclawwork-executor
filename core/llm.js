@@ -99,10 +99,17 @@ class LLMRouter {
       this._buckets[key]  = new TokenBucket(cfg.rpmLimit, cfg.rpmLimit / 60);
     }
   }
+  _isCooling(providerName) { // V90-NEW-K
+    const lastFail = this._cooldowns.get(providerName);
+    if (!lastFail) return false;
+    return (Date.now() - lastFail) < 600000; // 10 min
+  }
+
   _availableProviders() {
     return Object.values(PROVIDERS).sort((a, b) => a.priority - b.priority).filter(p => {
       if (!process.env[p.apiKeyEnv]) return false;
       if (this._breakers[p.name].isOpen()) return false;
+      if (this._isCooling(p.name)) return false; // V90-NEW-K
       return true;
     });
   }
@@ -129,6 +136,16 @@ class LLMRouter {
     const data = await res.json();
     return data.choices?.[0]?.message?.content ?? '';
   }
+  _compressPrompt(messages) { // V90-NEW-P
+    // Truncar system prompt para 500 chars, remover few-shots, manter user
+    return messages.map(m => {
+      if (m.role === 'system') {
+        return { ...m, content: m.content.slice(0, 500) + (m.content.length > 500 ? '... [truncado]' : '') };
+      }
+      return m;
+    }).filter(m => !(m.role === 'system' && m._fewShot));
+  }
+
   async chat(messages, opts = {}) {
     const providers = this._availableProviders();
     if (providers.length === 0) throw new Error('[LLMRouter] Nenhum provider disponível.');
@@ -153,8 +170,24 @@ class LLMRouter {
     ? Object.assign(new Error(err.message || 'Timeout'), { code: 'TIMEOUT' })
     : err;
           if (e.fatal) { breaker.recordFailure(); lastError = e; break; }
-          if (e.code === 'RATE_LIMIT' && e.retryAfterMs && attempt < this.maxRetries) {
-            await sleep(err.retryAfterMs); attempt++; continue;
+          // V90-NEW-P: Self-Correction 429 -> prompt comprimido
+          if (e.code === 'RATE_LIMIT') {
+            if (attempt === 0 && !opts._compressed) {
+              console.warn(`[LLMRouter] 429 -> tentando com prompt comprimido...`);
+              const compressed = this._compressPrompt(messages);
+              try {
+                bucket.tryConsume(1);
+                const result = await this._callProvider(provider, compressed, opts.model, controller.signal, 512);
+                clearTimeout(timer); breaker.recordSuccess();
+                return { content: result, provider: provider.name, model: opts.model || provider.models[0], attempt, compressed: true };
+              } catch (err2) {
+                clearTimeout(timer);
+                console.warn(`[LLMRouter] 429 compressao falhou -> cooldown`);
+              }
+            }
+            if (e.retryAfterMs && attempt < this.maxRetries) {
+              await sleep(err.retryAfterMs); attempt++; continue;
+            }
           }
           breaker.recordFailure(); lastError = e; attempt++;
           if (attempt <= this.maxRetries) await sleep(calcBackoff(attempt));
@@ -171,6 +204,7 @@ class LLMRouter {
       circuitBreaker: b.toJSON(),
       rateLimitTokens: Math.floor(this._buckets[name].tokens),
       apiKeySet: !!process.env[PROVIDERS[name].apiKeyEnv],
+      cooldownMs: this._isCooling(name) ? 600000 - (Date.now() - this._cooldowns.get(name)) : 0,
     }]));
   }
 }
@@ -270,6 +304,21 @@ function isCacheable(response) {
 
 const router = new LLMRouter();
 
+function getFewShots(prompt, limit = 3) { // V90-NEW-L
+  if (!db) return [];
+  try {
+    const words = prompt.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 5);
+    if (!words.length) return [];
+    const like = words.map(() => 'example_input LIKE ?').join(' OR ');
+    const params = words.map(w => '%' + w + '%');
+    const rows = db.prepare(`SELECT example_input, example_output FROM few_shots WHERE (${like}) AND score > 0 ORDER BY score DESC, ts DESC LIMIT ?`).all(...params, limit);
+    return rows;
+  } catch(e) {
+    console.warn('[FEW-SHOT] Erro:', e.message);
+    return [];
+  }
+n}
+
 async function ask(prompt, options = {}) {
   try {
     if (db) {
@@ -285,9 +334,15 @@ async function ask(prompt, options = {}) {
 
     const messages = [];
     const soulPrompt = getSoulPrompt();
-    const personaSnippet = options.persona && PERSONAS[options.persona] ? PERSONAS[options.persona] : ""; // V80-13
+    const personaSnippet = options.persona && PERSONAS[options.persona] ? PERSONAS[options.persona].prompt : ""; // V80-13 + V90-NEW-S
+    // V90-NEW-L: injetar few-shots como prefixo do system prompt
+    const fewShots = getFewShots(prompt, 3);
+    let fewShotText = '';
+    if (fewShots.length) {
+      fewShotText = fewShots.map((fs, i) => 'Exemplo ' + (i+1) + ':\nEntrada: ' + fs.example_input.slice(0,150) + '\nSaida: ' + fs.example_output.slice(0,150)).join('\n\n') + '\n\n';
+    }
     if (soulPrompt) {
-      messages.push({ role: 'system', content: (personaSnippet ? personaSnippet + "\n\n" : "") + soulPrompt }); // V80-13
+      messages.push({ role: 'system', content: (personaSnippet ? personaSnippet + "\n\n" : "") + fewShotText + soulPrompt, _fewShot: !!fewShots.length }); // V80-13 + V90-NEW-L
     }
     messages.push({ role: 'user', content: prompt });
     const result = await router.chat(messages, options);
