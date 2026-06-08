@@ -106,7 +106,7 @@ class LLMRouter {
       return true;
     });
   }
-  async _callProvider(provider, messages, model, signal, maxTokens = 1024) {
+  async _callProvider(provider, messages, model, signal, maxTokens = 2048) {
     const apiKey = process.env[provider.apiKeyEnv];
     const body   = JSON.stringify({ model: model || provider.models[0], messages, max_tokens: maxTokens, stream: false });
     const res    = await fetch(`${provider.baseURL}/chat/completions`, {
@@ -144,7 +144,7 @@ class LLMRouter {
         const timer = setTimeout(() => controller.abort(), this.timeoutMs);
         try {
           bucket.tryConsume(1);
-          const result = await this._callProvider(provider, messages, opts.model, controller.signal, opts.maxTokens || 1024);
+          const result = await this._callProvider(provider, messages, opts.model, controller.signal, opts.maxTokens || 2048);
           clearTimeout(timer); breaker.recordSuccess();
           return { content: result, provider: provider.name, model: opts.model || provider.models[0], attempt };
         } catch (err) {

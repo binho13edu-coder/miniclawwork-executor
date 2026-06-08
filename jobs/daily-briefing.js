@@ -103,20 +103,61 @@ function getContext() {
   } catch { return '📚 Contexto: indisponível'; }
 }
 
-async function generateAnalysis(btc, dolar, finance) {
+function getLeadsStatus() {
   try {
-    const prompt = `Como analista operacional, analise os dados abaixo e gere uma analise 3/3/3:` + String.fromCharCode(10) + String.fromCharCode(10) +
-      `DADOS:` + String.fromCharCode(10) +
+    const ldb = new Database('./data/leads.db', { readonly: true });
+    const total = ldb.prepare('SELECT COUNT(*) as c FROM leads').get().c;
+    const abertos = ldb.prepare("SELECT COUNT(*) as c FROM leads WHERE resultado = 'aberto' OR resultado IS NULL").get().c;
+    const contatados = ldb.prepare("SELECT COUNT(*) as c FROM leads WHERE resultado = 'contatado'").get().c;
+    const ignorados = ldb.prepare("SELECT COUNT(*) as c FROM leads WHERE resultado = 'ignorado'").get().c;
+    ldb.close();
+    return `📊 Leads: ${total} total | ${abertos} abertos | ${contatados} contatados | ${ignorados} ignorados`;
+  } catch { return '📊 Leads: indisponível'; }
+}
+
+function getJobsStatus() {
+  try {
+    const jdb = new Database(JOBS_DB, { readonly: true });
+    const recent = jdb.prepare("SELECT name, status, error FROM jobs WHERE status != 'ok' ORDER BY updated_at DESC LIMIT 3").all();
+    jdb.close();
+    if (!recent.length) return '✅ Jobs: todos OK';
+    return '⚠️ Jobs falhos:\n' + recent.map(j => `• ${j.name}: ${j.status}${j.error ? ' (' + j.error.slice(0,40) + ')' : ''}`).join('\n');
+  } catch { return '⚠️ Jobs: indisponível'; }
+}
+
+function getSystemHealth() {
+  try {
+    const fs = require('fs');
+    const trimmerLog = './data/trimmer.log';
+    let trimmerStatus = '❌ Trimmer: sem log';
+    if (fs.existsSync(trimmerLog)) {
+      const stats = fs.statSync(trimmerLog);
+      const daysSince = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60 * 24);
+      trimmerStatus = daysSince > 2 ? `⚠️ Trimmer: última execução há ${Math.floor(daysSince)} dias` : '✅ Trimmer: ativo';
+    }
+    return trimmerStatus;
+  } catch { return '❌ Sistema: indisponível'; }
+}
+
+async function generateAnalysis(btc, dolar, finance, leads, jobs, health, context) {
+  try {
+    const prompt = `Você é o MiniClawwork, agente operacional do Fábio. Analise o estado atual do sistema e gere um briefing operacional 3/3/3.` + String.fromCharCode(10) + String.fromCharCode(10) +
+      `DADOS DO SISTEMA:` + String.fromCharCode(10) +
       `${btc}` + String.fromCharCode(10) +
       `${dolar}` + String.fromCharCode(10) +
-      `${finance}` + String.fromCharCode(10) + String.fromCharCode(10) +
+      `${finance}` + String.fromCharCode(10) +
+      `${leads}` + String.fromCharCode(10) +
+      `${jobs}` + String.fromCharCode(10) +
+      `${health}` + String.fromCharCode(10) +
+      `${context}` + String.fromCharCode(10) + String.fromCharCode(10) +
+      `COMANDOS DISPONIVEIS: /leads, /fin, /plan, /hackflow, /trimmer, /ctx, /status` + String.fromCharCode(10) + String.fromCharCode(10) +
       `FORMATO OBRIGATORIO (sem introducao, sem conclusao):` + String.fromCharCode(10) +
-      `📌 Fatos: 3 fatos objetivos baseados apenas nos dados acima.` + String.fromCharCode(10) +
-      `🔍 Observacoes: 3 observacoes sobre variacoes, tendencias ou anomalias.` + String.fromCharCode(10) +
-      `⚡ Sugestoes: 3 sugestoes de acao concretas baseadas nos dados.` + String.fromCharCode(10) + String.fromCharCode(10) +
-      `Regras: seja direto, uma frase por item, numerado 1-2-3 em cada secao.`;
+      `📌 Fatos: 3 fatos objetivos sobre o estado do sistema.` + String.fromCharCode(10) +
+      `🔍 Observacoes: 3 alertas operacionais (ex: saldo zerado, jobs falhos, leads acumulados).` + String.fromCharCode(10) +
+      `⚡ Proximos comandos: 3 comandos sugeridos do sistema com justificativa curta. NUNCA sugira "plano de investimento", "consultoria financeira" ou acoes externas ao sistema.` + String.fromCharCode(10) + String.fromCharCode(10) +
+      `Regras: seja direto, uma frase por item, numerado 1-2-3. Use linguagem de agente operacional, nao de consultor de banco.`;
 
-    let analysis = await llmSkill.askLLM(prompt, { history: [], persona: 'Você é um analista operacional direto e objetivo. Gere análises concisas em formato 3/3/3.', maxHistoryTurns: 3 });
+    let analysis = await llmSkill.askLLM(prompt, { history: [], persona: 'Você é o MiniClawwork, agente operacional direto. Fale como quem gerencia um sistema, nao como consultor financeiro.', maxHistoryTurns: 3 });
 
     if (!analysis || analysis.length < 50) {
       console.log('[V80-10] Analise vazia ou curta, tentando regenerar...');
@@ -142,7 +183,10 @@ const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); const brDat
   logStep(jobId, 'cripto', 'OK', 'BTC: ' + btc.slice(0, 30));
   const finance = getFinance();
   logStep(jobId, 'financas', 'OK', finance.slice(0, 50));
-  const analysis = await generateAnalysis(btc, dolar, finance);
+  const leads = getLeadsStatus();
+    const jobsStatus = getJobsStatus();
+    const health = getSystemHealth();
+    const analysis = await generateAnalysis(btc, dolar, finance, leads, jobsStatus, health, getContext());
   const sections = [
     `📌 *Briefing Diário — MiniClawwork*`,
     `🕐 ${now}`,

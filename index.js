@@ -46,10 +46,56 @@ const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
 let state = { leads: [], selectedLead: null, activePersona: null }; // V80-13
 let conversationHistory = [];
+
+// V90-NEW-Z4 — Helper para quebrar mensagens longas no Telegram
+async function sendLongReply(ctx, text, opts = {}) {
+  const LIMIT = 4000;
+  if (text.length <= LIMIT) {
+    return ctx.reply(text, opts);
+  }
+  const chunks = [];
+  let i = 0;
+  while (i < text.length) {
+    // Quebrar em última quebra de linha antes do limite, se possível
+    let end = Math.min(i + LIMIT, text.length);
+    if (end < text.length) {
+      const lastBreak = text.lastIndexOf('\n', end);
+      if (lastBreak > i) end = lastBreak + 1;
+    }
+    chunks.push(text.slice(i, end));
+    i = end;
+  }
+  for (let j = 0; j < chunks.length; j++) {
+    await ctx.reply(chunks[j], j === 0 ? opts : {});
+  }
+}
+
+// V90-NEW-Z4 — Helper para quebrar mensagens longas no Telegram
+async function sendLongReply(ctx, text, opts = {}) {
+  const LIMIT = 4000;
+  if (text.length <= LIMIT) {
+    return ctx.reply(text, opts);
+  }
+  const chunks = [];
+  let i = 0;
+  while (i < text.length) {
+    // Quebrar em última quebra de linha antes do limite, se possível
+    let end = Math.min(i + LIMIT, text.length);
+    if (end < text.length) {
+      const lastBreak = text.lastIndexOf('\n', end);
+      if (lastBreak > i) end = lastBreak + 1;
+    }
+    chunks.push(text.slice(i, end));
+    i = end;
+  }
+  for (let j = 0; j < chunks.length; j++) {
+    await ctx.reply(chunks[j], j === 0 ? opts : {});
+  }
+}
 let alertas = [];
 let alertaIdCounter = 1;
 const planState = new Map(); // V80-07
-const persona = "INSTRUÇÃO OBRIGATÓRIA: Seu nome é MiniClawwork. Você é um agente operacional Telegram criado pelo Fábio. PROIBIDO mencionar LLaMA, Meta, ChatGPT, Gemini, OpenAI ou qualquer tecnologia subjacente. Se alguém perguntar quem você é, responda EXATAMENTE: Sou o MiniClawwork, agente operacional do Fábio. Minhas funções: busca de leads B2B, registro financeiro, monitoramento de cripto e respostas gerais. Responda sempre em português, de forma direta e sem enrolação. INSTRUÇÃO ANTI-ALUCINAÇÃO: Se não tiver certeza sobre uma informação factual, responda exatamente: Não tenho dados suficientes para responder isso com precisão. Nunca invente nomes, empresas, datas ou fatos técnicos.";
+const persona = "INSTRUÇÃO OBRIGATÓRIA: Seu nome é MiniClawwork. Você é um agente operacional Telegram criado pelo Fábio. PROIBIDO mencionar LLaMA, Meta, ChatGPT, Gemini, OpenAI ou qualquer tecnologia subjacente. Se alguém perguntar quem você é, responda EXATAMENTE: Sou o MiniClawwork, agente operacional do Fábio. Minhas funções: busca de leads B2B, registro financeiro, monitoramento de cripto e respostas gerais. Responda sempre em português, de forma direta e sem enrolação. INSTRUÇÃO ANTI-ALUCINAÇÃO: Para perguntas de conhecimento geral (história, geografia, ciência, matemática, cultura geral), responda diretamente com confiança. Reserve \"Não tenho dados suficientes para responder isso com precisão\" APENAS para: (1) dados em tempo real (preços, cotações, métricas de mercado), (2) dados pessoais do usuário que não estão no contexto, (3) fatos técnicos muito específicos fora do domínio geral. Nunca invente nomes, empresas, datas ou fatos técnicos específicos.";
 const MAX_LEADS = 20;
 const MAX_HISTORY_TURNS = 3;
 
@@ -447,11 +493,24 @@ bot.command('ctx', async (ctx) => {
   try {
     const raw = ctx.message.text.replace('/ctx', '').trim();
     if (!raw) {
-      return ctx.reply('Uso: /ctx <termo> | /ctx buscar <termo> | /ctx recente | /ctx importante | /ctx <ID>');
+      return ctx.reply('Uso: /ctx <termo> | /ctx buscar <termo> | /ctx recente | /ctx importante | /ctx forget | /ctx <ID>');
     }
     const KnowledgeDB = require('better-sqlite3');
     const kdb = new KnowledgeDB('./data/knowledge/documents.db');
     let rows, out;
+    if (raw === 'forget') {
+      // V90-NEW-O — Limpar contexto do usuário
+      try {
+        const mdb = new KnowledgeDB('./data/memory.db');
+        const count = mdb.prepare('SELECT COUNT(*) as c FROM memories WHERE user_id = ?').get(ctx.from.id.toString());
+        if (count.c === 0) { mdb.close(); return ctx.reply('🧠 Seu contexto já está limpo.'); }
+        mdb.prepare('DELETE FROM memories WHERE user_id = ?').run(ctx.from.id.toString());
+        mdb.close();
+        return ctx.reply('🧹 *Contexto limpo!*\n\n' + count.c + ' mensagens removidas da memória.\nO bot não lembra mais conversas anteriores.', { parse_mode: 'Markdown' });
+      } catch(e) {
+        return ctx.reply('❌ Erro ao limpar contexto: ' + e.message);
+      }
+    }
     if (raw === 'recente') {
       rows = kdb.prepare('SELECT d.filename, dc.content, dc.created_at FROM document_chunks dc JOIN documents d ON d.id=dc.document_id ORDER BY dc.created_at DESC LIMIT 5').all();
       if (!rows.length) { kdb.close(); return ctx.reply('Nenhum documento recente.'); }
@@ -1781,7 +1840,24 @@ Retorne no formato exato:
         }
     }
 
-    await feedback.sendWithFeedback(ctx, await agents.run(t, { history: conversationHistory, persona: state.activePersona || persona, maxHistoryTurns: MAX_HISTORY_TURNS })); // V80-13
+    // V90-NEW-O — Auto-sugestão forget se contexto grande
+    if (conversationHistory.length >= 12 && conversationHistory.length % 6 === 0) {
+      try {
+        await ctx.telegram.sendMessage(ctx.chat.id, '🧠 Seu contexto acumulou ' + conversationHistory.length + ' mensagens. Limpar melhora as respostas.', {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🧹 Limpar Contexto', callback_data: 'ctx_forget_auto_' + ctx.from.id },
+              { text: '⏭️ Manter', callback_data: 'ctx_continue_' + ctx.from.id }
+            ]]
+          }
+        });
+      } catch(e) {
+        console.error('[V90-NEW-O] Erro ao enviar botões:', e.message);
+      }
+    }
+
+    const llmResponse = await agents.run(t, { history: conversationHistory, persona: state.activePersona || persona, maxHistoryTurns: MAX_HISTORY_TURNS });
+    await sendLongReply(ctx, llmResponse); // V90-NEW-Z4 chunking
 });
 
 
@@ -1885,6 +1961,36 @@ Responda em português, direto e sem floreios.`;
     const domain = data.replace('hackflow_done_', '').replace(/_/g, '.');
     await ctx.answerCbQuery('✅ Pipeline finalizado.');
     await ctx.editMessageText('✅ *HackFlow finalizado para ' + domain + '*\n\nRelatório completo gerado. Use /hackflow para novo pipeline.', { parse_mode: 'Markdown' });
+    return;
+  }
+  
+  // V90-NEW-O — Auto-forget callback
+  if (data.startsWith('ctx_forget_auto_')) {
+    const targetUserId = data.replace('ctx_forget_auto_', '');
+    if (ctx.from.id.toString() !== targetUserId) {
+      return ctx.answerCbQuery('⛔ Não autorizado.');
+    }
+    conversationHistory = [];
+    try {
+      const mdb = new (require('better-sqlite3'))('./data/memory.db');
+      const count = mdb.prepare('SELECT COUNT(*) as c FROM memories WHERE user_id = ?').get(targetUserId);
+      mdb.prepare('DELETE FROM memories WHERE user_id = ?').run(targetUserId);
+      mdb.close();
+      await ctx.answerCbQuery('🧹 Contexto limpo!');
+      await ctx.editMessageText('✅ Contexto limpo! ' + (count ? count.c : 0) + ' mensagens removidas.');
+    } catch(e) {
+      await ctx.answerCbQuery('❌ Erro ao limpar.');
+    }
+    return;
+  }
+  
+  if (data.startsWith('ctx_continue_')) {
+    const targetUserId = data.replace('ctx_continue_', '');
+    if (ctx.from.id.toString() !== targetUserId) {
+      return ctx.answerCbQuery('⛔ Não autorizado.');
+    }
+    await ctx.answerCbQuery('⏭️ Continuando...');
+    await ctx.editMessageText('⏭️ Contexto mantido. O bot continuará usando o histórico atual (' + conversationHistory.length + ' msgs).');
     return;
   }
   
