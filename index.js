@@ -467,6 +467,23 @@ const verificarAlertas = async () => {
 };
 setInterval(verificarAlertas, 2 * 60 * 1000);
 
+// V90-NEW-R: Verificar lembretes pendentes a cada 60s
+setInterval(async () => {
+  try {
+    const pending = reminder.getPending();
+    for (const r of pending) {
+      try {
+        await bot.telegram.sendMessage(r.user_id, `⏰ *Lembrete:*\n${r.message}`, { parse_mode: 'Markdown' });
+        reminder.markSent(r.id);
+      } catch(e) {
+        console.error('[REMINDER] Erro ao enviar:', e.message);
+      }
+    }
+  } catch(e) {
+    console.error('[REMINDER] Erro no loop:', e.message);
+  }
+}, 60000);
+
 
 
 // Middleware de latência (V80-NEW-H)
