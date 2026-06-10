@@ -27,6 +27,9 @@ const aiAttack    = require('./skills/ai-attack-simulator'); // AI Attack Simula
 const hackflow    = require('./skills/hackflow'); // V90-NEW-H Pipeline Hacking
 const trimmer     = require('./jobs/memory-trimmer'); // V90-NEW-A Trimmer TLDR
 const healer      = require('./jobs/chunk-healer'); // V90-NEW-Q Auto-Healing
+const reminder    = require('./jobs/reminder'); // V90-NEW-R Reminder
+const exporter    = require('./jobs/exporter'); // V90-NEW-Y Export
+const scheduler   = require('./jobs/scheduler'); // V90-NEW-W Schedule
 const { initCache, getCacheStats } = require('./core/llm.js');
 const coreRouter = require('./core/router');
 const { handleFinance, FinanceStore } = require('./core/finance');
@@ -1434,6 +1437,93 @@ bot.command('heal', async (ctx) => {
     console.error('[heal] ERRO:', e.message);
     return ctx.reply('❌ Erro no healer: ' + e.message);
   }
+});
+
+// V90-NEW-W — /schedule
+bot.command('schedule', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const t = throttle(ctx.from.id, '/schedule');
+  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's.');
+  
+  const raw = ctx.message.text.replace('/schedule', '').trim();
+  if (!raw || raw === 'list') {
+    const list = scheduler.listSchedules(ctx.from.id.toString());
+    if (!list.length) return ctx.reply('📅 Nenhum agendamento ativo.');
+    let out = '📅 *Agendamentos ativos:*\n\n';
+    list.forEach((s, i) => {
+      const when = new Date(s.next_run).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      out += `${i+1}. ${s.action} — ${s.cron} — prox: ${when}\n`;
+    });
+    return ctx.reply(out, { parse_mode: 'Markdown' });
+  }
+  
+  if (raw.startsWith('delete ')) {
+    const id = parseInt(raw.replace('delete ', '').trim(), 10);
+    const result = scheduler.deleteSchedule(id, ctx.from.id.toString());
+    return ctx.reply(result.ok ? `✅ Agendamento #${id} removido.` : '❌ ' + result.error);
+  }
+  
+  // Parse: /schedule <acao> <cron>
+  // Ex: /schedule briefing daily=09:00
+  const parts = raw.split(' ');
+  if (parts.length < 2) {
+    return ctx.reply('Uso: /schedule <acao> <cron>\nEx: /schedule briefing daily=09:00\n     /schedule leads weekly=1:14:30');
+  }
+  const cron = parts.pop();
+  const action = parts.join(' ');
+  const result = scheduler.addSchedule(ctx.from.id.toString(), action, cron);
+  if (result.error) return ctx.reply('❌ ' + result.error);
+  return ctx.reply(`📅 Agendamento #${result.id} criado.\nAcao: ${action}\nProxima execucao: ${new Date(result.nextRun).toLocaleString('pt-BR')}`);
+});
+
+// V90-NEW-Y — /export
+bot.command('export', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const t = throttle(ctx.from.id, '/export');
+  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's.');
+  
+  const raw = ctx.message.text.replace('/export', '').trim().toLowerCase();
+  if (!raw || !['leads', 'fin'].includes(raw)) {
+    return ctx.reply('Uso: /export <leads|fin>\nEx: /export leads');
+  }
+  
+  const result = raw === 'leads' ? exporter.exportLeads() : exporter.exportFin();
+  if (result.error) return ctx.reply('❌ ' + result.error);
+  
+  const tmpPath = '/tmp/' + result.filename;
+  require('fs').writeFileSync(tmpPath, result.csv);
+  await ctx.replyWithDocument({ source: tmpPath, filename: result.filename });
+  require('fs').unlinkSync(tmpPath);
+  return ctx.reply(`✅ ${result.count} registros exportados.`);
+});
+
+// V90-NEW-R — /reminder
+bot.command('reminder', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const t = throttle(ctx.from.id, '/reminder');
+  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's.');
+  
+  const raw = ctx.message.text.replace('/reminder', '').trim();
+  if (!raw) {
+    const list = reminder.listReminders(ctx.from.id.toString());
+    if (!list.length) return ctx.reply('⏰ Nenhum lembrete ativo.');
+    let out = '⏰ *Lembretes ativos:*\n\n';
+    list.forEach((r, i) => {
+      const when = new Date(r.trigger_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      out += `${i+1}. ${r.message} — ${when}\n`;
+    });
+    return ctx.reply(out, { parse_mode: 'Markdown' });
+  }
+  
+  // Parse: /reminder <minutos> <mensagem>
+  const parts = raw.split(' ');
+  const minutes = parseInt(parts[0], 10);
+  if (isNaN(minutes) || minutes < 1) {
+    return ctx.reply('Uso: /reminder <minutos> <mensagem>\nEx: /reminder 30 Revisar proposta');
+  }
+  const message = parts.slice(1).join(' ') || 'Lembrete sem descricao';
+  const result = reminder.addReminder(ctx.from.id.toString(), message, minutes);
+  return ctx.reply(`⏰ Lembrete #${result.id} agendado para ${minutes} minuto(s).`);
 });
 
 bot.on('text', async (ctx) => {
