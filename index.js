@@ -214,20 +214,30 @@ async function triggerAndWait(ctx, code, statusText, outputPrefix) {
     }
 }
 
+// V90-NEW-S: Mapa comando -> modelo (sobrescreve persona)
+const COMMAND_MODEL_MAP = {
+  '/leads': 'qwen/qwen3-coder',
+  '/osint': 'qwen/qwen3-coder',
+  '/fin': 'llama-3.3-70b-versatile',
+  '/ctx': 'gemma2-9b-it',
+  '/corrigir': 'gemma2-9b-it',
+};
+
 const askLLM = async (t, opts = {}) => {
   try {
     const res = await coreRouter.handle(t);
     if (res) return res;
   } catch (e) { /* fallback */ }
-  // V90-NEW-S: resolver modelo preferido pela persona ativa
+  // V90-NEW-S: resolver modelo preferido pela persona OU comando
   const { PERSONAS } = require('./core/personas');
   const personaKey = opts.persona || state.activePersona || 'default';
   const personaCfg = PERSONAS[personaKey] || PERSONAS.default;
+  const commandModel = opts.command ? COMMAND_MODEL_MAP[opts.command] : null;
   return llmSkill.askLLM(t, {
     history: conversationHistory,
     persona: opts.persona || persona,
     maxHistoryTurns: MAX_HISTORY_TURNS,
-    model: personaCfg.preferredModel // V90-NEW-S
+    model: commandModel || personaCfg.preferredModel // V90-NEW-S: comando > persona
   });
 };
 

@@ -163,7 +163,10 @@ class LLMRouter {
           bucket.tryConsume(1);
           const result = await this._callProvider(provider, messages, opts.model, controller.signal, opts.maxTokens || 2048);
           clearTimeout(timer); breaker.recordSuccess();
-          return { content: result, provider: provider.name, model: opts.model || provider.models[0], attempt };
+          const responseMeta = { content: result, provider: provider.name, model: opts.model || provider.models[0], attempt };
+// V90-NEW-V: registrar provider usado
+try { const metrics = require('./metrics'); metrics.track('llm_provider', { provider: provider.name, model: responseMeta.model, attempt }); } catch(e) {}
+return responseMeta;
         } catch (err) {
           clearTimeout(timer);
           const e = err.name === 'AbortError'
