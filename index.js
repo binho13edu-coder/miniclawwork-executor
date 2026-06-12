@@ -30,6 +30,7 @@ const healer      = require('./jobs/chunk-healer'); // V90-NEW-Q Auto-Healing
 const reminder    = require('./jobs/reminder'); // V90-NEW-R Reminder
 const exporter    = require('./jobs/exporter'); // V90-NEW-Y Export
 const scheduler   = require('./jobs/scheduler'); // V90-NEW-W Schedule
+const learning    = require('./core/learning'); // V90-NEW-APRENDER
 const { initCache, getCacheStats } = require('./core/llm.js');
 const coreRouter = require('./core/router');
 const { handleFinance, FinanceStore } = require('./core/finance');
@@ -1561,6 +1562,89 @@ bot.command('reminder', async (ctx) => {
   const result = reminder.addReminder(ctx.from.id.toString(), message, minutes);
   return ctx.reply(`⏰ Lembrete #${result.id} agendado para ${minutes} minuto(s).`);
 });
+
+// V90-NEW-APRENDER — /aprender
+bot.command('aprender', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const t = throttle(ctx.from.id, '/aprender');
+  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's.');
+
+  const raw = ctx.message.text.replace('/aprender', '').trim();
+  if (!raw) {
+    return ctx.reply('📚 *Aprender*\n\nUso: /aprender <subcomando> <args>\n\nSub-comandos:\n• topico <tema> — explicacao direta + exercicio\n• testar <tema> — quiz interativo\n• revisar — revisa topicos pendentes\n• feynman <texto> — avalia sua explicacao\n• salvar <tema> — salva para revisao espacada\n• status — lista seus topicos', { parse_mode: 'Markdown' });
+  }
+
+  const parts = raw.split(' ');
+  const sub = parts[0].toLowerCase();
+  const args = parts.slice(1).join(' ');
+  const userId = ctx.from.id.toString();
+  const { ask } = require('./core/llm');
+
+  try {
+    switch (sub) {
+      case 'topico': {
+        if (!args) return ctx.reply('Uso: /aprender topico <tema>');
+        await ctx.reply('🧠 Gerando explicacao...');
+        const result = await learning.topicExplain(args, ask);
+        return sendLongMessage(ctx, result.text);
+      }
+
+      case 'testar': {
+        if (!args) return ctx.reply('Uso: /aprender testar <tema>');
+        await ctx.reply('📝 Gerando pergunta...');
+        const test = await learning.testGenerate(args, ask);
+        learning.setAwaiting(userId, { topic: args, question: test.question, correctAnswer: test.correctAnswer, attempts: 0 });
+        return ctx.reply('📝 *Pergunta sobre "' + args + '":*\n\n' + test.question + '\n\n_Responda diretamente neste chat._', { parse_mode: 'Markdown' });
+      }
+
+      case 'revisar': {
+        const due = learning.getDueReviews(userId);
+        if (!due.length) return ctx.reply('✅ Nenhum topico pendente de revisao.');
+        await ctx.reply('📚 ' + due.length + ' topico(s) para revisar. Gerando perguntas...');
+        let out = '';
+        for (const row of due) {
+          const questions = await learning.generateReviewQuestions(row.topic, row.level, ask);
+          out += '*' + row.topic + '* (nivel ' + row.level + '):\n' + questions + '\n\n';
+          learning.completeReview(row.id);
+        }
+        return sendLongMessage(ctx, out);
+      }
+
+      case 'feynman': {
+        if (!args) return ctx.reply('Uso: /aprender feynman <sua explicacao>');
+        await ctx.reply('🔍 Analisando sua explicacao...');
+        const topic = args.split(' ')[0];
+        const result = await learning.feynmanEvaluate(args, topic, ask);
+        return sendLongMessage(ctx, '🔍 *Avaliacao Feynman:*\n\n' + result);
+      }
+
+      case 'salvar': {
+        if (!args) return ctx.reply('Uso: /aprender salvar <tema>');
+        const result = learning.saveTopic(userId, args);
+        return ctx.reply('💾 Topico "' + args + '" salvo!\nProxima revisao: ' + new Date(result.nextReview).toLocaleString('pt-BR'));
+      }
+
+      case 'status': {
+        const rows = learning.getStatus(userId);
+        if (!rows.length) return ctx.reply('📭 Nenhum topico salvo. Use /aprender salvar <tema>');
+        let out = '📚 *Seus topicos:*\n\n';
+        rows.forEach((r, i) => {
+          const when = new Date(r.next_review).toLocaleDateString('pt-BR');
+          const stars = '⭐'.repeat(r.level + 1);
+          out += (i+1) + '. ' + r.topic + ' ' + stars + ' — revisar em ' + when + '\n';
+        });
+        return sendLongMessage(ctx, out);
+      }
+
+      default:
+        return ctx.reply('❓ Sub-comando desconhecido. Use /aprender sem args para ver opcoes.');
+    }
+  } catch(e) {
+    console.error('[APRENDER] Erro:', e.message);
+    return ctx.reply('❌ Erro ao processar: ' + e.message);
+  }
+});
+
 
 bot.on('text', async (ctx) => {
     const t = ctx.message.text;
