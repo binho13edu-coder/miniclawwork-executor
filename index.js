@@ -1646,6 +1646,43 @@ bot.command('aprender', async (ctx) => {
 });
 
 
+
+// V90-NEW-APRENDER: interceptar respostas de /aprender testar
+bot.on('text', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const pending = learning.getAwaiting(userId);
+  if (!pending) return;
+  
+  if (ctx.message.text.startsWith('/')) {
+    learning.clearAwaiting(userId);
+    return;
+  }
+  
+  const userAnswer = ctx.message.text.trim();
+  pending.attempts++;
+  
+  try {
+    const { ask } = require('./core/llm');
+    const evalResult = await learning.testEvaluate(userAnswer, pending.correctAnswer, pending.topic, ask);
+    
+    if (evalResult.correct) {
+      learning.clearAwaiting(userId);
+      return ctx.reply('✅ *Correto!*' + String.fromCharCode(10) + String.fromCharCode(10) + evalResult.feedback + String.fromCharCode(10) + String.fromCharCode(10) + 'Resposta completa: ' + pending.correctAnswer, { parse_mode: 'Markdown' });
+    }
+    
+    if (pending.attempts >= 2) {
+      learning.clearAwaiting(userId);
+      return ctx.reply('❌ *Resposta incorreta.*' + String.fromCharCode(10) + String.fromCharCode(10) + 'Dica: ' + evalResult.feedback + String.fromCharCode(10) + String.fromCharCode(10) + 'Resposta correta: ' + pending.correctAnswer, { parse_mode: 'Markdown' });
+    }
+    
+    return ctx.reply('❌ ' + evalResult.feedback + String.fromCharCode(10) + String.fromCharCode(10) + 'Tente novamente! (tentativa ' + pending.attempts + '/2)', { parse_mode: 'Markdown' });
+  } catch(e) {
+    learning.clearAwaiting(userId);
+    console.error('[APRENDER] Erro avaliacao:', e.message);
+    return ctx.reply('❌ Erro ao avaliar resposta.');
+  }
+});
+
 bot.on('text', async (ctx) => {
     const t = ctx.message.text;
     const tl = t.toLowerCase().trim();
