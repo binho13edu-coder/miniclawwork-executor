@@ -688,7 +688,8 @@ Escolha uma categoria:`;
       [{ text: '💰 Financeiro', callback_data: 'menu_finance' }, { text: '📊 Leads', callback_data: 'menu_leads' }],
       [{ text: '🔒 Seguranca', callback_data: 'menu_security' }, { text: '🤖 Sistema', callback_data: 'menu_system' }],
       [{ text: '💱 Crypto', callback_data: 'menu_crypto' }, { text: '📚 Knowledge', callback_data: 'menu_knowledge' }],
-      [{ text: '⚡ Utilitarios', callback_data: 'menu_utils' }, { text: '💰 Monetizacao', callback_data: 'menu_revenue' }]
+      [{ text: '⚡ Utilitarios', callback_data: 'menu_utils' }, { text: '📅 Produtividade', callback_data: 'menu_productivity' }],
+      [{ text: '💰 Monetizacao', callback_data: 'menu_revenue' }, { text: '🎯 Autonomia', callback_data: 'menu_autonomy' }]
     ]
   };
   await ctx.reply(menuText, { parse_mode: 'Markdown', reply_markup: keyboard });
@@ -753,6 +754,23 @@ bot.action('menu_utils', async (ctx) => {
 });
 
 
+
+bot.action('menu_productivity', async (ctx) => {
+  await ctx.editMessageText(`📅 *Produtividade*
+  
+/reminder <min> <msg> — Agenda lembrete
+/schedule <acao> <cron> — Agendamento recorrente  
+/export <leads|fin> — Exporta dados para CSV`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
+});
+
+bot.action('menu_autonomy', async (ctx) => {
+  await ctx.editMessageText(`🎯 *Autonomia*
+  
+/goals — Ver goals pendentes
+/heal — Auto-healing de chunks
+/trimmer — Comprime chunks antigos`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
+});
+
 bot.action('menu_revenue', async (ctx) => {
   await ctx.editMessageText(`💰 *Monetizacao (V80-17 a V80-24)*
   
@@ -774,7 +792,8 @@ Escolha uma categoria:`;
       [{ text: '💰 Financeiro', callback_data: 'menu_finance' }, { text: '📊 Leads', callback_data: 'menu_leads' }],
       [{ text: '🔒 Seguranca', callback_data: 'menu_security' }, { text: '🤖 Sistema', callback_data: 'menu_system' }],
       [{ text: '💱 Crypto', callback_data: 'menu_crypto' }, { text: '📚 Knowledge', callback_data: 'menu_knowledge' }],
-      [{ text: '⚡ Utilitarios', callback_data: 'menu_utils' }, { text: '💰 Monetizacao', callback_data: 'menu_revenue' }]
+      [{ text: '⚡ Utilitarios', callback_data: 'menu_utils' }, { text: '📅 Produtividade', callback_data: 'menu_productivity' }],
+      [{ text: '💰 Monetizacao', callback_data: 'menu_revenue' }, { text: '🎯 Autonomia', callback_data: 'menu_autonomy' }]
     ]
   };
   await ctx.editMessageText(menuText, { parse_mode: 'Markdown', reply_markup: keyboard });
