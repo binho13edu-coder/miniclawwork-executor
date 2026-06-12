@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: '/home/opc/miniclawwork-executor/.env' });
 // Validação defensiva
 const REQUIRED_ENV = ['TELEGRAM_TOKEN','GITHUB_TOKEN','OWNER_ID','OPENROUTER_API_KEY'];
 

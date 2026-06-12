@@ -100,6 +100,7 @@ class LLMRouter {
     }
   }
   _isCooling(providerName) { // V90-NEW-K
+    if (!this._cooldowns) this._cooldowns = new Map();
     const lastFail = this._cooldowns.get(providerName);
     if (!lastFail) return false;
     return (Date.now() - lastFail) < 600000; // 10 min
