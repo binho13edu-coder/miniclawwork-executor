@@ -1586,7 +1586,7 @@ bot.command('aprender', async (ctx) => {
         if (!args) return ctx.reply('Uso: /aprender topico <tema>');
         await ctx.reply('🧠 Gerando explicacao...');
         const result = await learning.topicExplain(args, ask);
-        return sendLongMessage(ctx, result.text);
+        return ctx.reply(result.text);
       }
 
       case 'testar': {
@@ -1607,7 +1607,7 @@ bot.command('aprender', async (ctx) => {
           out += '*' + row.topic + '* (nivel ' + row.level + '):\n' + questions + '\n\n';
           learning.completeReview(row.id);
         }
-        return sendLongMessage(ctx, out);
+        return ctx.reply(out);
       }
 
       case 'feynman': {
@@ -1615,7 +1615,7 @@ bot.command('aprender', async (ctx) => {
         await ctx.reply('🔍 Analisando sua explicacao...');
         const topic = args.split(' ')[0];
         const result = await learning.feynmanEvaluate(args, topic, ask);
-        return sendLongMessage(ctx, '🔍 *Avaliacao Feynman:*\n\n' + result);
+        return ctx.reply('🔍 *Avaliacao Feynman:*\n\n' + result);
       }
 
       case 'salvar': {
@@ -1633,7 +1633,7 @@ bot.command('aprender', async (ctx) => {
           const stars = '⭐'.repeat(r.level + 1);
           out += (i+1) + '. ' + r.topic + ' ' + stars + ' — revisar em ' + when + '\n';
         });
-        return sendLongMessage(ctx, out);
+        return ctx.reply(out);
       }
 
       default:
