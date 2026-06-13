@@ -31,6 +31,7 @@ const reminder    = require('./jobs/reminder'); // V90-NEW-R Reminder
 const exporter    = require('./jobs/exporter'); // V90-NEW-Y Export
 const scheduler   = require('./jobs/scheduler'); // V90-NEW-W Schedule
 const learning    = require('./core/learning'); // V90-NEW-APRENDER
+const tts         = require('./core/tts');      // V90-NEW-VOICE
 const { initCache, getCacheStats } = require('./core/llm.js');
 const coreRouter = require('./core/router');
 const { handleFinance, FinanceStore } = require('./core/finance');
@@ -1562,6 +1563,28 @@ bot.command('reminder', async (ctx) => {
   const result = reminder.addReminder(ctx.from.id.toString(), message, minutes);
   return ctx.reply(`⏰ Lembrete #${result.id} agendado para ${minutes} minuto(s).`);
 });
+
+
+// V90-NEW-VOICE — /falar <texto>
+bot.command('falar', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  const t = throttle(ctx.from.id, '/falar');
+  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's.');
+
+  const texto = ctx.message.text.replace('/falar', '').trim();
+  if (!texto) return ctx.reply('🎙️ *Falar*\n\nUso: /falar <texto>\n\nConverte texto em voz usando Edge-TTS.\nLimite: 500 caracteres.', { parse_mode: 'Markdown' });
+
+  try {
+    await ctx.reply('🎙️ Sintetizando voz...');
+    const { buffer, truncated } = await tts.synthesize(texto);
+    const caption = truncated ? '⚠️ Texto truncado para 500 caracteres.' : '';
+    await ctx.replyWithVoice({ source: buffer }, { caption });
+  } catch (e) {
+    console.error('[TTS] Erro:', e.message);
+    await ctx.reply('⚠️ Voz indisponivel no momento. Texto: ' + texto);
+  }
+});
+
 
 // V90-NEW-APRENDER — /aprender
 bot.command('aprender', async (ctx) => {
