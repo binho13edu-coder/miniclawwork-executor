@@ -32,6 +32,7 @@ const exporter    = require('./jobs/exporter'); // V90-NEW-Y Export
 const scheduler   = require('./jobs/scheduler'); // V90-NEW-W Schedule
 const learning    = require('./core/learning'); // V90-NEW-APRENDER
 const tts         = require('./core/tts');      // V90-NEW-VOICE
+const stt         = require('./core/stt');      // V90-NEW-STT
 const { initCache, getCacheStats } = require('./core/llm.js');
 const coreRouter = require('./core/router');
 const { handleFinance, FinanceStore } = require('./core/finance');
@@ -1671,6 +1672,72 @@ bot.command('aprender', async (ctx) => {
 
 
 // V90-NEW-APRENDER: interceptar respostas de /aprender testar
+
+// V90-NEW-STT — Handler de mensagens de voz (voice -> texto -> LLM -> voz)
+// Validacao: max 5 minutos de duracao, max 10MB de arquivo
+bot.on('voice', async (ctx) => {
+  if (ctx.from.id !== OWNER_ID) return;
+  const t = throttle(ctx.from.id, '/voice');
+  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's.');
+
+  const MAX_DURATION = 300; // 5 minutos
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+  const voice = ctx.message.voice;
+  if (voice.duration && voice.duration > MAX_DURATION) {
+    return ctx.reply('❌ Audio muito longo (' + voice.duration + 's). Limite: ' + MAX_DURATION + 's (5 minutos).');
+  }
+  if (voice.file_size && voice.file_size > MAX_FILE_SIZE) {
+    return ctx.reply('❌ Arquivo muito grande (' + Math.round(voice.file_size / 1024 / 1024) + 'MB). Limite: 10MB.');
+  }
+
+  try {
+    await ctx.reply('🎙️ Ouvindo...');
+
+    // 1. Baixar arquivo de voz
+    const fileId = voice.file_id;
+    const fileLink = await ctx.telegram.getFileLink(fileId);
+    const ogaPath = '/tmp/voice_' + ctx.from.id + '_' + Date.now() + '.oga';
+
+    const response = await require('axios').get(fileLink, { responseType: 'stream' });
+    const fs = require('fs');
+    const writer = fs.createWriteStream(ogaPath);
+    response.data.pipe(writer);
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+
+    // 2. Transcrever (Groq Whisper)
+    await ctx.reply('📝 Transcrevendo...');
+    const transcribed = await stt.transcribe(ogaPath);
+    if (!transcribed || !transcribed.trim()) {
+      fs.unlinkSync(ogaPath);
+      return ctx.reply('❌ Nao consegui entender o audio. Tente novamente falando mais claro.');
+    }
+
+    await ctx.reply('🧠 Voce disse: "' + transcribed + '"');
+
+    // 3. Pensar (LLM)
+    await ctx.reply('🧠 Pensando...');
+    const { ask } = require('./core/llm');
+    const llmResponse = await ask(transcribed, { persona: 'default', maxTokens: 400 });
+
+    // 4. Responder em voz (TTS)
+    await ctx.reply('🎙️ Respondendo em voz...');
+    const { buffer } = await tts.synthesize(llmResponse);
+    await ctx.replyWithVoice({ source: buffer });
+
+    // 5. Limpar temporarios
+    try { fs.unlinkSync(ogaPath); } catch(e) {}
+
+  } catch (e) {
+    console.error('[VOICE] Erro:', e.message);
+    await ctx.reply('❌ Erro ao processar audio: ' + e.message);
+  }
+});
+
+
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id.toString();
   const pending = learning.getAwaiting(userId);
