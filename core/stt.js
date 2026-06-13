@@ -8,7 +8,6 @@ const fs = require('fs');
 const FormData = require('form-data');
 const path = require('path');
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const WHISPER_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 
 /**
@@ -17,7 +16,8 @@ const WHISPER_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
  * @returns {Promise<string>} — texto transcrito
  */
 async function transcribe(filePath) {
-  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada');
+  const GROQ_API_KEY = process.env.GROQ_API_KEY; // LER AQUI, nao no top-level
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada no ambiente');
   if (!fs.existsSync(filePath)) throw new Error('Arquivo nao encontrado: ' + filePath);
 
   const form = new FormData();
