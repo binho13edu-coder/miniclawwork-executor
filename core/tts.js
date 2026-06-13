@@ -6,7 +6,7 @@
 const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
 
 const DEFAULT_VOICE = 'pt-BR-AntonioNeural';
-const MAX_CHARS = 500;
+const MAX_CHARS = 1500;
 
 /**
  * Sintetiza texto em áudio MP3
