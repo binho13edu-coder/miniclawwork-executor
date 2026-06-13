@@ -14,15 +14,6 @@ module.exports = {
     max_memory_restart: "200M",
     env_file: ".env"
   }, {
-    name: "goals-heartbeat",
-    script: "./jobs/goals-heartbeat.js",
-    instances: 1,
-    exec_mode: "fork",
-    cron_restart: "0 */6 * * *",
-    autorestart: false,
-    max_memory_restart: "200M",
-    env_file: ".env"
-  }, {
     name: "memory-summarizer",
     script: "./jobs/memory-summarizer.js",
     instances: 1,
