@@ -1,10 +1,11 @@
 /**
  * core/stt.js — Speech-to-Text via Groq Whisper API (V90-NEW-STT)
- * FormData nativo do Node.js 18+ (sem pacote form-data extra)
+ * Usa form-data pacote (dependencia transitiva do axios) + fs.createReadStream
  */
 
 const axios = require('axios');
 const fs = require('fs');
+const FormData = require('form-data');
 const path = require('path');
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -20,15 +21,14 @@ async function transcribe(filePath) {
   if (!fs.existsSync(filePath)) throw new Error('Arquivo nao encontrado: ' + filePath);
 
   const form = new FormData();
-  const fileBuffer = fs.readFileSync(filePath);
-  const blob = new Blob([fileBuffer], { type: 'audio/ogg' });
-  form.append('file', blob, path.basename(filePath));
+  form.append('file', fs.createReadStream(filePath));
   form.append('model', 'whisper-large-v3');
   form.append('language', 'pt');
   form.append('response_format', 'json');
 
   const response = await axios.post(WHISPER_URL, form, {
     headers: {
+      ...form.getHeaders(),
       'Authorization': 'Bearer ' + GROQ_API_KEY,
     },
     timeout: 30000,
