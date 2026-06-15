@@ -22,9 +22,7 @@ const axios = require('axios');
 const fs = require('fs');
 const cryptoSkill = require('./skills/crypto');
 const llmSkill    = require('./skills/llm');
-const hacking     = require('./skills/ethical-hacking'); // V9.0
-const aiAttack    = require('./skills/ai-attack-simulator'); // AI Attack Simulator
-const hackflow    = require('./skills/hackflow'); // V90-NEW-H Pipeline Hacking
+// [REMOVIDO V9.0-SEC] ethical-hacking, ai-attack-simulator, hackflow — removidos
 const trimmer     = require('./jobs/memory-trimmer'); // V90-NEW-A Trimmer TLDR
 const healer      = require('./jobs/chunk-healer'); // V90-NEW-Q Auto-Healing
 const reminder    = require('./jobs/reminder'); // V90-NEW-R Reminder
@@ -633,29 +631,10 @@ bot.hears(/\b([0-9a-f]{8})\b/i, async (ctx) => {
   }
 });
 
-// V9.0 — Comandos Ethical Hacking
-bot.command('recon', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tRecon = throttle(ctx.from.id, '/recon');
-  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /recon novamente.');
-  const target = ctx.message.text.slice(7).trim();
-  if (!target) return ctx.reply('Uso: /recon <dominio>');
-  const result = await hacking.recon(target);
-  hacking.logAudit(ctx.from.id, '/recon', target);
-  return ctx.reply(result);
-});
+// [REMOVIDO V9.0-SEC] /recon removido
 
 
-bot.command('scan', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tScan = throttle(ctx.from.id, '/scan');
-  if (tScan.throttled) return ctx.reply('⏳ Aguarde ' + tScan.waitSeconds + 's antes de usar /scan novamente.');
-  const host = ctx.message.text.slice(6).trim();
-  if (!host) return ctx.reply('Uso: /scan <host>');
-  const result = await hacking.scan(host);
-  hacking.logAudit(ctx.from.id, '/scan', host);
-  return ctx.reply(result);
-});
+// [REMOVIDO V9.0-SEC] /scan removido
 
 // DISABLED bot.command('payload', async (ctx) => {
 // DISABLED   if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
@@ -668,16 +647,7 @@ bot.command('scan', async (ctx) => {
 // DISABLED   return ctx.reply(result);
 // DISABLED });
 // DISABLED 
-bot.command('report', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tReport = throttle(ctx.from.id, '/report');
-  if (tReport.throttled) return ctx.reply('⏳ Aguarde ' + tReport.waitSeconds + 's antes de usar /report novamente.');
-  const target = ctx.message.text.slice(8).trim();
-  if (!target) return ctx.reply('Uso: /report <alvo>');
-  const result = await hacking.report(target);
-  hacking.logAudit(ctx.from.id, '/report', target);
-  return ctx.reply(result);
-});
+// [REMOVIDO V9.0-SEC] /report removido
 
 
 // V80-MENU — Menu inline por categoria
@@ -1324,63 +1294,9 @@ bot.command('osint', async (ctx) => {
 // DISABLED   }
 // DISABLED });
 // DISABLED 
-bot.command('aimonitor', async (ctx) => { console.log('[DEBUG] aimonitor chamado:', ctx.message.text);
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const t = throttle(ctx.from.id, '/aimonitor');
-  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /aimonitor novamente.');
-  
-  const attackId = ctx.message.text.slice(11).trim();
-  if (!attackId) return ctx.reply('Uso: /aimonitor <attack_id>');
-  
-  try {
-    const result = aiAttack.monitorAttack(attackId);
-    console.log('[aimonitor] result:', JSON.stringify(result));
-    const safeAttackId = attackId.replace(/_/g, '\\_');
-    let out = '📊 *Monitoramento — ' + safeAttackId + '*\n\n';
-    out += '*Fase atual:* ' + result.current_phase + '\n';
-    out += '*Progresso:* ' + result.progress + '%\n';
-    out += '*Duração:* ' + result.duration_seconds + 's\n';
-    out += '*Anomalias:* ' + result.anomalies_detected + '\n';
-    out += '*Defesas bypassadas:* ' + result.defenses_bypassed;
-    console.log('[aimonitor] sending:', out.slice(0,50));
-    const msg = await ctx.reply(out);
-    console.log('[aimonitor] sent OK, msg_id:', msg.message_id);
-  } catch(e) {
-    console.error('[aimonitor] FAIL:', e.message, e.code, e.stack);
-    await ctx.reply('❌ Erro: ' + e.message);
-  }
-});
+// [REMOVIDO V9.0-SEC] /aimonitor removido
 
-bot.command('aianalyze', async (ctx) => { console.log('[DEBUG] aianalyze chamado:', ctx.message.text);
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const t = throttle(ctx.from.id, '/aianalyze');
-  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /aianalyze novamente.');
-  
-  const raw = ctx.message.text.slice(10).trim();
-  if (!raw) return ctx.reply('Uso: /aianalyze <JSON do ataque>');
-  
-  try {
-    let attackData = JSON.parse(raw);
-    const result = aiAttack.analyzeResults(attackData);
-    console.log('[aianalyze] result:', JSON.stringify(result).slice(0,100));
-    let out = '📈 *Análise do Ataque*\n\n';
-    out += '*Score de Eficiência:* ' + result.efficiency_score + '/100\n';
-    out += '*Adaptabilidade:* ' + result.adaptability_score + '/100\n';
-    out += '*Nível de Risco:* ' + result.risk_level + '\n\n';
-    out += '*Recomendações:*\n';
-    if (result.recommendations) {
-      result.recommendations.forEach(r => {
-        out += '  • ' + r + '\n';
-      });
-    }
-    console.log('[aianalyze] sending:', out.slice(0,50));
-    const msg = await ctx.reply(out, { parse_mode: 'Markdown' });
-    console.log('[aianalyze] sent OK, msg_id:', msg.message_id);
-  } catch(e) {
-    console.error('[aianalyze] FAIL:', e.message, e.code, e.stack);
-    await ctx.reply('❌ Erro: ' + e.message);
-  }
-});
+// [REMOVIDO V9.0-SEC] /aianalyze removido
 
 // V90-NEW-H — Pipeline Hacking Integrado
 // DISABLED bot.command('hackflow', async (ctx) => {
@@ -2336,26 +2252,7 @@ Responda em português, direto e sem floreios.`;
     return;
   }
   
-  // V90-NEW-H — HITL HackFlow payload educacional
-  if (data.startsWith('hackflow_payload_')) {
-    const domain = data.replace('hackflow_payload_', '').replace(/_/g, '.');
-    await ctx.answerCbQuery('🎯 Gerando payload educacional...');
-    await ctx.editMessageText('🎯 *Gerando payload para ' + domain + '*\n⏳ Processando...', { parse_mode: 'Markdown' });
-    try {
-      const result = await hacking.payload('reverse_shell', 'bash');
-      await ctx.reply('🎯 Payload Educativo — ' + domain + '\n\n' + result + '\n\n⚠️ Aviso: Use apenas em ambientes autorizados.');
-    } catch(e) {
-      await ctx.reply('❌ Erro ao gerar payload: ' + e.message);
-    }
-    return;
-  }
-  
-  if (data.startsWith('hackflow_done_')) {
-    const domain = data.replace('hackflow_done_', '').replace(/_/g, '.');
-    await ctx.answerCbQuery('✅ Pipeline finalizado.');
-    await ctx.editMessageText('✅ *HackFlow finalizado para ' + domain + '*\n\nRelatório completo gerado. Use /hackflow para novo pipeline.', { parse_mode: 'Markdown' });
-    return;
-  }
+  // [REMOVIDO V9.0-SEC] hackflow_payload_ e hackflow_done_ removidos — handlers ofensivos
   
   // V90-NEW-O — Auto-forget callback
   if (data.startsWith('ctx_forget_auto_')) {
