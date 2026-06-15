@@ -65,7 +65,10 @@ function checkFailedJobs(bot) {
     }
 }
 
+let osintRunning = false;
 async function processLeadsOSINT(bot) { // V90-NEW-N
+  if (osintRunning) return;
+  osintRunning = true;
   const dbPath = path.join(__dirname, '..', 'data', 'leads.db');
   if (!fs.existsSync(dbPath)) return;
 
@@ -130,6 +133,8 @@ async function processLeadsOSINT(bot) { // V90-NEW-N
   } catch(error) {
     console.error('[Watchdog] Leads OSINT Error:', error.message);
     if (db) try { db.close(); } catch (e) {}
+  } finally {
+    osintRunning = false;
   }
 }
 
@@ -143,6 +148,7 @@ function start(bot) {
         checkMemory(bot);
         checkFailedJobs(bot);
         metrics.checkDegradation(bot);
+        processLeadsOSINT(bot).catch(e => console.error('[Watchdog] OSINT cycle error:', e.message));
     }, CHECK_INTERVAL);
     
     console.log(`[Watchdog] Iniciado — intervalo: ${CHECK_INTERVAL}ms, memoria limite: ${MEMORY_LIMIT / 1024 / 1024}MB`);
