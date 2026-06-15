@@ -53,11 +53,12 @@ async function checkHIBP(email) {
 
 
 async function enrichTech(domain) { // V90-NEW-X
-  const https = require('https');
   return new Promise((resolve) => {
     const req = https.request('https://' + domain, { method: 'GET', timeout: 15000 }, (res) => {
       let data = '';
-      res.on('data', chunk => data += chunk);
+      let size = 0;
+      const MAX = 200 * 1024;
+      res.on('data', chunk => { if (size < MAX) { data += chunk; size += chunk.length; } });
       res.on('end', () => {
         const stack = [];
         const html = data.toLowerCase();
@@ -75,18 +76,11 @@ async function enrichTech(domain) { // V90-NEW-X
         if (html.includes('cloudflare')) stack.push('Cloudflare');
         if (html.includes('aws.amazon.com') || html.includes('amazonaws')) stack.push('AWS');
 
-        resolve({
-          stack,
-          raw_headers: Object.keys(headers).reduce((acc, k) => {
-            acc[k] = headers[k].toString().slice(0, 100);
-            return acc;
-          }, {}),
-          server: headers['server'] || 'desconhecido'
-        });
+        resolve({ stack, server: headers['server'] || 'desconhecido' });
       });
     });
-    req.on('error', () => resolve({ stack: [], error: 'Conexao falhou', raw_headers: {}, server: null }));
-    req.on('timeout', () => { req.destroy(); resolve({ stack: [], error: 'Timeout', raw_headers: {}, server: null }); });
+    req.on('error', () => resolve({ stack: [], error: 'Conexao falhou', server: null }));
+    req.on('timeout', () => { req.destroy(); resolve({ stack: [], error: 'Timeout', server: null }); });
     req.end();
   });
 }
