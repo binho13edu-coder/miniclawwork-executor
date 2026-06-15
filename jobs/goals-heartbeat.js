@@ -77,7 +77,7 @@ async function run() {
 }
 
 if (require.main === module) {
-  run().catch(e => {
+  run().then(() => process.exit(0)).catch(e => {
     console.error('[GOALS] FATAL:', e.message);
     process.exit(1);
   });
