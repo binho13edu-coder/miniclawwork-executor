@@ -32,3 +32,4 @@ tools/leak-auditor.js
 data/*.db
 data/**/*.db
 data/critic-rejections.log
+data/*.log
