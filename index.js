@@ -37,6 +37,43 @@ const { buildStatus } = require('./skills/status');
 const { memory } = require('./core/memory');
 const { ingestDocument } = require('./core/intake.js');
 const { execSync } = require('child_process');
+
+// ── invoicetrack (nativo Node.js — sem Python) ──────────────────────────────
+const invoiceDB = (() => {
+  const Database = require('better-sqlite3');
+  const db = new Database('/home/opc/miniclawwork-executor/data/invoices.db');
+  db.exec(`CREATE TABLE IF NOT EXISTS invoices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client TEXT NOT NULL,
+    value TEXT NOT NULL,
+    due_date TEXT NOT NULL,
+    description TEXT,
+    status TEXT DEFAULT 'pending',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )`);
+  return {
+    add(data) {
+      db.prepare('INSERT INTO invoices (client, value, due_date, description) VALUES (?, ?, ?, ?)')
+        .run(data.client, data.value, data.due, data.desc);
+      return { ok: true };
+    },
+    list() {
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = db.prepare('SELECT id, client, value, due_date, description, status FROM invoices ORDER BY due_date').all();
+      return { invoices: rows.map(r => ({
+        id: r.id, client: r.client, value: r.value, due: r.due_date,
+        description: r.description,
+        status: r.status === 'pending' && r.due_date < today ? 'overdue' : r.status
+      }))};
+    },
+    pay(id) {
+      db.prepare("UPDATE invoices SET status = 'paid' WHERE id = ?").run(id);
+      return { ok: true };
+    }
+  };
+})();
+// ── fim invoicetrack ─────────────────────────────────────────────────────────
+
 const { guard, throttle } = require('./core/command-guard');
 const helpManifest = require('./core/help-manifest');
 const corrections = require('./core/corrections');
@@ -772,196 +809,31 @@ Escolha uma categoria:`;
 });
 
 
-// V80-15 — Technical Debt Analyzer
-    const data = JSON.parse(result);
-    let out = '🔍 *Technical Debt — ' + data.repo + '*\n\n';
-    out += '📊 *Score Geral:* ' + data.score + '/10\n';
-    out += '📅 *Último commit:* ' + data.last_commit + '\n';
-    out += '📦 *Dependências:* ' + data.deps_count + '\n\n';
-    if (data.findings.length) {
-      out += '*Findings:*\n';
-      data.findings.forEach(f => {
-        out += '• [' + f.severity + '] ' + f.category + ': ' + f.description + '\n';
-      });
-    } else {
-      out += '✅ Nenhum finding critico encontrado.\n';
-    }
-    out += '\n⚠️ Analise passiva via APIs publicas.';
-    return ctx.reply(out);
-  } catch (e) {
-    return ctx.reply('❌ Erro na analise: ' + e.message);
-  }
-});
+// [V9.0-SEC] V80-15 Technical Debt removido — bloco orfao
 
 
-    const data = JSON.parse(result);
-    let out = '🔒 *HackerPro — ' + mode.toUpperCase() + '*\n*Alvo:* ' + target + '\n\n';
-    if (mode === 'recon') {
-      out += '*Subdominios:* ' + (data.subdomains?.length || 0) + '\n';
-      out += '*Tech Stack:* ' + (data.tech?.join(', ') || 'N/A') + '\n';
-      out += '*Certificados:* ' + (data.certs?.length || 0) + ' encontrados\n';
-    } else if (mode === 'owasp') {
-      out += '*OWASP Checks:*\n';
-      (data.checks || []).forEach(c => {
-        out += '• ' + c.check + ': ' + (c.found ? '⚠️ ' + c.severity : '✅ OK') + '\n';
-      });
-    } else if (mode === 'api') {
-      out += '*API Endpoints:* ' + (data.endpoints?.length || 0) + '\n';
-      out += '*Auth:* ' + (data.auth_issues?.length || 0) + ' issues\n';
-    } else if (mode === 'report') {
-      out += '*CVSS Medio:* ' + (data.cvss_avg || 'N/A') + '\n';
-      out += '*Findings:* ' + (data.findings?.length || 0) + '\n';
-      out += '*Risco:* ' + (data.risk_level || 'N/A') + '\n';
-    }
-    out += '\n⚠️ Apenas avaliacao passiva. Nenhum exploit executado.';
-    return ctx.reply(out);
-  } catch (e) {
-    return ctx.reply('❌ Erro: ' + e.message);
-  }
-});
+// [V9.0-SEC] HackerPro removido — bloco orfao ofensivo
 
 
-    const data = JSON.parse(result);
-    let out = '🔌 *API Arbitrage — ' + niche + '*\n\n';
-    out += '*APIs encontradas:* ' + data.apis.length + '\n\n';
-    data.apis.slice(0, 10).forEach(api => {
-      out += '• *' + api.name + '*\n';
-      out += '  ' + api.description + '\n';
-      out += '  💰 Valor: ' + api.value + ' | 🆓 Free tier: ' + api.free_tier + '\n\n';
-    });
-    if (data.apis.length > 10) out += '...e mais ' + (data.apis.length - 10) + ' APIs.\n';
-    out += '\n💡 Dica: Revenda via micro-SaaS ou agregadores.';
-    return ctx.reply(out);
-  } catch (e) {
-    return ctx.reply('❌ Erro: ' + e.message);
-  }
-});
+// [V9.0-SEC] Bloco orfao 1 removido
 
 
-    const data = JSON.parse(result);
-    let out = '🔎 *Domain Flipper — ' + keyword + '*\n\n';
-    out += '*Dominios encontrados:* ' + data.domains.length + '\n\n';
-    data.domains.slice(0, 8).forEach(d => {
-      out += '• *' + d.domain + '*\n';
-      out += '  DA: ' + (d.da || 'N/A') + ' | PA: ' + (d.pa || 'N/A') + '\n';
-      out += '  Idade: ' + (d.age || 'N/A') + ' anos | Backlinks: ' + (d.backlinks || 'N/A') + '\n';
-      out += '  💡 Potencial: ' + d.potential + '\n\n';
-    });
-    out += '\n⚠️ Verifique disponibilidade real antes de registrar.';
-    return ctx.reply(out);
-  } catch (e) {
-    return ctx.reply('❌ Erro: ' + e.message);
-  }
-});
+// [V9.0-SEC] Bloco orfao 2 removido
 
 
-    const data = JSON.parse(result);
-    let out = '📰 *Newsletter Hunter — ' + niche + '*\n\n';
-    out += '*Newsletters encontradas:* ' + data.newsletters.length + '\n\n';
-    data.newsletters.slice(0, 10).forEach(n => {
-      out += '• *' + n.name + '*\n';
-      out += '  ' + n.description + '\n';
-      out += '  👥 Est. subscribers: ' + (n.subscribers || 'N/A') + '\n';
-      out += '  🔗 ' + n.url + '\n\n';
-    });
-    out += '\n💡 Oportunidade: Venda de leads ou parcerias.';
-    return ctx.reply(out);
-  } catch (e) {
-    return ctx.reply('❌ Erro: ' + e.message);
-  }
-});
+// [V9.0-SEC] Bloco orfao 3 removido
 
 
-    const data = JSON.parse(result);
-    let out = '📐 *Template Generator — ' + type.toUpperCase() + '*\n';
-    out += '*Tema:* ' + topic + '\n\n';
-    out += data.template + '\n\n';
-    out += '💡 Use em ' + type + ' e venda no Gumroad/Payhip.';
-    return ctx.reply(out);
-  } catch (e) {
-    return ctx.reply('❌ Erro: ' + e.message);
-  }
-});
+// [V9.0-SEC] Bloco orfao 4 removido
 
 
-    const data = JSON.parse(result);
-    let out = '💬 *Prompt Market — ' + niche + '*\n\n';
-    out += '*Prompts encontrados:* ' + data.prompts.length + '\n\n';
-    data.prompts.slice(0, 8).forEach(p => {
-      out += '• *' + p.title + '* (' + p.category + ')\n';
-      out += '  ' + p.prompt.substring(0, 150) + '...\n';
-      out += '  💰 Est. valor: ' + p.value + '\n\n';
-    });
-    out += '\n💡 Venda no PromptBase, Etsy ou Gumroad.';
-    return ctx.reply(out);
-  } catch (e) {
-    return ctx.reply('❌ Erro: ' + e.message);
-  }
-});
+// [V9.0-SEC] Bloco orfao 5 removido
 
 
-    const data = JSON.parse(result);
-    let out = '🎯 *Lead Scoring — ' + lead.name + '*\n\n';
-    out += '*Score BANT:* ' + data.score + '/100\n';
-    out += '*Qualificacao:* ' + data.qualification + '\n\n';
-    out += '*Breakdown:*\n';
-    out += '💰 Budget: ' + data.breakdown.budget + '/25\n';
-    out += '👔 Authority: ' + data.breakdown.authority + '/25\n';
-    out += '🔥 Need: ' + data.breakdown.need + '/25\n';
-    out += '⏰ Timing: ' + data.breakdown.timing + '/25\n\n';
-    out += '*Recomendacao:* ' + data.recommendation;
-    
-    // V90-NEW-Z2 — HITL para scores > 80
-    if (data.score > 80) {
-      // Inserir lead no banco temporariamente para referência do callback
-      const db = new (require('better-sqlite3'))('./data/leads.db');
-      const hashLead = require('./core/lead-validator').hashLead;
-      const leadHash = hashLead(lead.email || lead.name, lead.company);
-      
-      // Verificar se já existe
-      const existing = db.prepare('SELECT id FROM leads WHERE lead_hash = ?').get(leadHash);
-      let leadId;
-      if (existing) {
-        leadId = existing.id;
-      } else {
-        const insert = db.prepare('INSERT INTO leads (nome, email, empresa, lead_hash, resultado) VALUES (?, ?, ?, ?, ?)');
-        const result = insert.run(lead.name, lead.email, lead.company, leadHash, 'aberto');
-        leadId = result.lastInsertRowid;
-      }
-      db.close();
-      
-      return ctx.reply(out, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '🚀 Iniciar Prospecção', callback_data: 'hitl_prospect_' + leadId },
-            { text: '⏭️ Ignorar', callback_data: 'hitl_ignore_' + leadId }
-          ]]
-        }
-      });
-    }
-    
-    return ctx.reply(out);
-  } catch (e) {
-    return ctx.reply('❌ Erro: ' + e.message);
-  }
-});
+// [V9.0-SEC] Bloco orfao 6 removido
 
 
-    const data = JSON.parse(result);
-    let out = '📄 *Proposta Comercial*\n\n';
-    out += '*Para:* ' + data.client + '\n';
-    out += '*Servico:* ' + data.service + '\n';
-    out += '*Investimento:* ' + data.value + '\n';
-    out += '*Prazo:* ' + data.deadline + '\n\n';
-    out += '*Escopo:*\n' + data.scope_text + '\n\n';
-    out += '*Termos:*\n' + data.terms + '\n\n';
-    out += '✅ Pronta para envio. Salve como PDF no Canva.';
-    return ctx.reply(out);
-  } catch (e) {
-    return ctx.reply('❌ Erro: ' + e.message);
-  }
-});
+// [V9.0-SEC] Bloco orfao 7 removido
 
 // V80-24 — Invoice Tracker
 bot.command('invoicetrack', async (ctx) => {
@@ -976,14 +848,12 @@ bot.command('invoicetrack', async (ctx) => {
     if (parts.length < 4) return ctx.reply('Uso: /invoicetrack add <cliente> | <valor> | <vencimento> | <descricao>');
     const invoice = { client: parts[0], value: parts[1], due: parts[2], desc: parts[3] };
     try {
-      const { execSync } = require('child_process');
-      execSync("python3 /home/opc/miniclawwork-executor/scripts/invoicetrack.py add '" + JSON.stringify(invoice) + "'", { encoding: 'utf8', timeout: 15000 });
+      invoiceDB.add(invoice);
       return ctx.reply('✅ Fatura adicionada: ' + invoice.client + ' — ' + invoice.value + ' (venc: ' + invoice.due + ')');
     } catch (e) { return ctx.reply('❌ Erro: ' + e.message); }
   } else if (action === 'list') {
     try {
-      const { execSync } = require('child_process');
-      const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/invoicetrack.py list', { encoding: 'utf8', timeout: 15000 });
+      const result = JSON.stringify(invoiceDB.list());
       const data = JSON.parse(result);
       if (!data.invoices.length) return ctx.reply('📋 Nenhuma fatura cadastrada.');
       let out = '📋 *Faturas*\n\n';
@@ -998,7 +868,7 @@ bot.command('invoicetrack', async (ctx) => {
     if (!id) return ctx.reply('Uso: /invoicetrack pay <id>');
     try {
       const { execSync } = require('child_process');
-      execSync('python3 /home/opc/miniclawwork-executor/scripts/invoicetrack.py pay ' + id, { encoding: 'utf8', timeout: 15000 });
+      invoiceDB.pay(id);
       return ctx.reply('✅ Fatura #' + id + ' marcada como paga.');
     } catch (e) { return ctx.reply('❌ Erro: ' + e.message); }
   } else {
@@ -2160,13 +2030,7 @@ bot.telegram.setMyCommands([
   { command: 'dump', description: 'Triar documentos do knowledge base' },
   { command: 'metrics', description: 'Metricas de uso dos comandos' },
   { command: 'cache', description: 'Estatisticas do cache LLM' },
-  { command: 'recon', description: 'Reconhecimento de dominio (V80-14)' },
-  { command: 'osint', description: 'Inteligencia OSINT (V80-14)' },
-  { command: 'scan', description: 'Scan de portas e headers (V80-14)' },
-  { command: 'payload', description: 'Payload educacional (V80-14)' },
-  { command: 'report', description: 'Relatorio de seguranca (V80-14)' },
-  { command: 'techdebt', description: 'Analise technical debt (V80-15)' },
-  { command: 'hackpro', description: 'Hacker Pro Suite passive (V80-16)' },
+  { command: 'osint', description: 'Inteligencia OSINT defensiva (V80-14)' },
   { command: 'apiarbitrage', description: 'APIs gratuitas de alto valor (V80-17)' },
   { command: 'domainflipper', description: 'Dominios expirados com potencial (V80-18)' },
   { command: 'newsletterhunter', description: 'Newsletters de nicho (V80-19)' },
