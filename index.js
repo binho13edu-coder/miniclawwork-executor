@@ -672,17 +672,7 @@ bot.hears(/\b([0-9a-f]{8})\b/i, async (ctx) => {
 
 // [REMOVIDO V9.0-SEC] /scan removido
 
-// DISABLED bot.command('payload', async (ctx) => {
-// DISABLED   if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-// DISABLED   const tPayload = throttle(ctx.from.id, '/payload');
-// DISABLED   if (tPayload.throttled) return ctx.reply('⏳ Aguarde ' + tPayload.waitSeconds + 's antes de usar /payload novamente.');
-// DISABLED   const args = ctx.message.text.slice(9).trim().split(' ');
-// DISABLED   if (args.length < 2) return ctx.reply('Uso: /payload <tipo> <plataforma>');
-// DISABLED   const result = await hacking.payload(args[0], args[1]);
-// DISABLED   hacking.logAudit(ctx.from.id, '/payload', args[0] + '/' + args[1]);
-// DISABLED   return ctx.reply(result);
-// DISABLED });
-// DISABLED 
+// [V9.0-SEC] /payload removido
 // [REMOVIDO V9.0-SEC] /report removido
 
 
@@ -1025,43 +1015,7 @@ bot.command('osint', async (ctx) => {
 });
 
 // AI-Driven Attack Simulator
-// DISABLED bot.command('aiattack', async (ctx) => {
-// DISABLED   if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-// DISABLED   const t = throttle(ctx.from.id, '/aiattack');
-// DISABLED   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /aiattack novamente.');
-// DISABLED   
-// DISABLED   const raw = ctx.message.text.slice(10).trim();
-// DISABLED   if (!raw) return ctx.reply('Uso: /aiattack <target> <scenario>\nCenários: credential_exfiltration, phishing_campaign, supply_chain, ransomware_sim, lateral_movement, persistence');
-// DISABLED   
-// DISABLED   const parts = raw.split(' ');
-// DISABLED   const target = parts[0];
-// DISABLED   const scenario = parts[1] || 'credential_exfiltration';
-// DISABLED   
-// DISABLED   try {
-// DISABLED     const result = aiAttack.simulateAttack(target, scenario);
-// DISABLED     let out = '🎯 *Ataque Simulado — ' + target + '*\n\n';
-// DISABLED     out += '*Cenário:* ' + scenario + '\n';
-// DISABLED     out += '*Fases:*\n';
-// DISABLED     if (result.phases) {
-// DISABLED       result.phases.forEach(p => {
-// DISABLED         out += '  • ' + p.phase + ' (' + p.technique + ') — ' + p.status + '\n';
-// DISABLED       });
-// DISABLED     }
-// DISABLED     return ctx.reply(out);
-// DISABLED   } catch(e) {
-// DISABLED     return ctx.reply('❌ Erro: ' + e.message);
-// DISABLED   }
-// DISABLED });
-// DISABLED 
-// [REMOVIDO V9.0-SEC] /aimonitor removido
-
-// [REMOVIDO V9.0-SEC] /aianalyze removido
-
-// V90-NEW-H — Pipeline Hacking Integrado
-// DISABLED     return ctx.reply('❌ Erro no pipeline: ' + e.message);
-// DISABLED   }
-// DISABLED });
-// DISABLED 
+// [V9.0-SEC] /aiattack removido
 // DISABLED // V90-NEW-A — Trimmer TLDR (compressão de memória)
 bot.command('trimmer', async (ctx) => {
   if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
