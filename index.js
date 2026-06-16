@@ -773,17 +773,6 @@ Escolha uma categoria:`;
 
 
 // V80-15 — Technical Debt Analyzer
-bot.command('techdebt', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tRecon = throttle(ctx.from.id, '/techdebt');
-  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /techdebt novamente.');
-  const target = ctx.message.text.slice(10).trim();
-  if (!target) return ctx.reply('Uso: /techdebt <usuario/repo> ou <URL>');
-  const repo = sanitizeInput(target);
-  ctx.reply('🔍 Analisando technical debt de ' + repo + '...');
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/techdebt.py "' + repo + '"', { encoding: 'utf8', timeout: 45000 });
     const data = JSON.parse(result);
     let out = '🔍 *Technical Debt — ' + data.repo + '*\n\n';
     out += '📊 *Score Geral:* ' + data.score + '/10\n';
@@ -804,21 +793,7 @@ bot.command('techdebt', async (ctx) => {
   }
 });
 
-// V80-16 — Hacker Pro Suite Passive
-bot.command('hackpro', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tRecon = throttle(ctx.from.id, '/hackpro');
-  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /hackpro novamente.');
-  const args = ctx.message.text.slice(9).trim().split(' ');
-  const target = sanitizeDomain(args[0] || '');
-  const mode = (args[1] || 'recon').toLowerCase();
-  if (!target) return ctx.reply('Uso: /hackpro <dominio> <recon|owasp|api|report>');
-  const validModes = ['recon', 'owasp', 'api', 'report'];
-  if (!validModes.includes(mode)) return ctx.reply('Modo invalido. Use: recon, owasp, api, report');
-  ctx.reply('🔒 HackerPro [' + mode + '] em ' + target + '...');
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/hackpro.py "' + target + '" ' + mode, { encoding: 'utf8', timeout: 60000 });
+
     const data = JSON.parse(result);
     let out = '🔒 *HackerPro — ' + mode.toUpperCase() + '*\n*Alvo:* ' + target + '\n\n';
     if (mode === 'recon') {
@@ -845,16 +820,7 @@ bot.command('hackpro', async (ctx) => {
   }
 });
 
-// V80-17 — API Arbitrage
-bot.command('apiarbitrage', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tRecon = throttle(ctx.from.id, '/apiarbitrage');
-  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /apiarbitrage novamente.');
-  const niche = ctx.message.text.slice(13).trim() || 'general';
-  ctx.reply('🔌 Buscando APIs gratuitas de alto valor no nicho: ' + niche + '...');
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/apiarbitrage.py "' + sanitizeInput(niche) + '"', { encoding: 'utf8', timeout: 45000 });
+
     const data = JSON.parse(result);
     let out = '🔌 *API Arbitrage — ' + niche + '*\n\n';
     out += '*APIs encontradas:* ' + data.apis.length + '\n\n';
@@ -871,16 +837,7 @@ bot.command('apiarbitrage', async (ctx) => {
   }
 });
 
-// V80-18 — Domain Flipper
-bot.command('domainflipper', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tRecon = throttle(ctx.from.id, '/domainflipper');
-  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /domainflipper novamente.');
-  const keyword = ctx.message.text.slice(14).trim() || 'tech';
-  ctx.reply('🔎 Buscando dominios expirados com potencial: ' + keyword + '...');
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/domainflipper.py "' + sanitizeInput(keyword) + '"', { encoding: 'utf8', timeout: 45000 });
+
     const data = JSON.parse(result);
     let out = '🔎 *Domain Flipper — ' + keyword + '*\n\n';
     out += '*Dominios encontrados:* ' + data.domains.length + '\n\n';
@@ -897,16 +854,7 @@ bot.command('domainflipper', async (ctx) => {
   }
 });
 
-// V80-19 — Newsletter Hunter
-bot.command('newsletterhunter', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tRecon = throttle(ctx.from.id, '/newsletterhunter');
-  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /newsletterhunter novamente.');
-  const niche = ctx.message.text.slice(17).trim() || 'business';
-  ctx.reply('📰 Cacando newsletters no nicho: ' + niche + '...');
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/newsletterhunter.py "' + sanitizeInput(niche) + '"', { encoding: 'utf8', timeout: 45000 });
+
     const data = JSON.parse(result);
     let out = '📰 *Newsletter Hunter — ' + niche + '*\n\n';
     out += '*Newsletters encontradas:* ' + data.newsletters.length + '\n\n';
@@ -923,20 +871,7 @@ bot.command('newsletterhunter', async (ctx) => {
   }
 });
 
-// V80-20 — Template Generator
-bot.command('templategen', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tRecon = throttle(ctx.from.id, '/templategen');
-  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /templategen novamente.');
-  const args = ctx.message.text.slice(12).trim().split(' ');
-  const type = (args[0] || 'notion').toLowerCase();
-  const topic = args.slice(1).join(' ') || 'project management';
-  const validTypes = ['notion', 'airtable', 'excel', 'sheets'];
-  if (!validTypes.includes(type)) return ctx.reply('Tipo invalido. Use: notion, airtable, excel, sheets');
-  ctx.reply('📐 Gerando template ' + type + ' sobre: ' + topic + '...');
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/templategen.py "' + type + '" "' + sanitizeInput(topic) + '"', { encoding: 'utf8', timeout: 45000 });
+
     const data = JSON.parse(result);
     let out = '📐 *Template Generator — ' + type.toUpperCase() + '*\n';
     out += '*Tema:* ' + topic + '\n\n';
@@ -948,16 +883,7 @@ bot.command('templategen', async (ctx) => {
   }
 });
 
-// V80-21 — Prompt Market
-bot.command('promptmarket', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tRecon = throttle(ctx.from.id, '/promptmarket');
-  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /promptmarket novamente.');
-  const niche = ctx.message.text.slice(13).trim() || 'copywriting';
-  ctx.reply('💬 Catalogando prompts premium para: ' + niche + '...');
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync('python3 /home/opc/miniclawwork-executor/scripts/promptmarket.py "' + sanitizeInput(niche) + '"', { encoding: 'utf8', timeout: 45000 });
+
     const data = JSON.parse(result);
     let out = '💬 *Prompt Market — ' + niche + '*\n\n';
     out += '*Prompts encontrados:* ' + data.prompts.length + '\n\n';
@@ -973,26 +899,7 @@ bot.command('promptmarket', async (ctx) => {
   }
 });
 
-// V80-22 — Lead Scoring (BANT)
-bot.command('leadscoring', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tRecon = throttle(ctx.from.id, '/leadscoring');
-  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /leadscoring novamente.');
-  const raw = ctx.message.text.slice(12).trim();
-  if (!raw) return ctx.reply('Uso: /leadscoring <nome> | <email> | <empresa> | <orcamento> | <autoridade> | <necessidade> | <timing>');
-  const parts = raw.split('|').map(s => s.trim());
-  const lead = {
-    name: parts[0] || 'N/A',
-    email: sanitizeEmail(parts[1] || ''),
-    company: parts[2] || 'N/A',
-    budget: parts[3] || 'N/A',
-    authority: parts[4] || 'N/A',
-    need: parts[5] || 'N/A',
-    timing: parts[6] || 'N/A'
-  };
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync("python3 /home/opc/miniclawwork-executor/scripts/leadscoring.py '" + JSON.stringify(lead) + "'", { encoding: 'utf8', timeout: 30000 });
+
     const data = JSON.parse(result);
     let out = '🎯 *Lead Scoring — ' + lead.name + '*\n\n';
     out += '*Score BANT:* ' + data.score + '/100\n';
@@ -1040,24 +947,7 @@ bot.command('leadscoring', async (ctx) => {
   }
 });
 
-// V80-23 — Proposal Generator
-bot.command('proposalgen', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const tRecon = throttle(ctx.from.id, '/proposalgen');
-  if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /proposalgen novamente.');
-  const raw = ctx.message.text.slice(12).trim();
-  if (!raw) return ctx.reply('Uso: /proposalgen <cliente> | <servico> | <valor> | <prazo> | <escopo>');
-  const parts = raw.split('|').map(s => s.trim());
-  const proposal = {
-    client: parts[0] || 'Cliente',
-    service: parts[1] || 'Servico',
-    value: parts[2] || 'R$ 0,00',
-    deadline: parts[3] || '30 dias',
-    scope: parts[4] || 'Escopo padrao'
-  };
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync("python3 /home/opc/miniclawwork-executor/scripts/proposalgen.py '" + JSON.stringify(proposal) + "'", { encoding: 'utf8', timeout: 30000 });
+
     const data = JSON.parse(result);
     let out = '📄 *Proposta Comercial*\n\n';
     out += '*Para:* ' + data.client + '\n';
