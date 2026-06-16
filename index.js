@@ -22,7 +22,6 @@ const axios = require('axios');
 const fs = require('fs');
 const cryptoSkill = require('./skills/crypto');
 const llmSkill    = require('./skills/llm');
-// [REMOVIDO V9.0-SEC] ethical-hacking, ai-attack-simulator, hackflow — removidos
 const trimmer     = require('./jobs/memory-trimmer'); // V90-NEW-A Trimmer TLDR
 const healer      = require('./jobs/chunk-healer'); // V90-NEW-Q Auto-Healing
 const reminder    = require('./jobs/reminder'); // V90-NEW-R Reminder
@@ -1299,46 +1298,6 @@ bot.command('osint', async (ctx) => {
 // [REMOVIDO V9.0-SEC] /aianalyze removido
 
 // V90-NEW-H — Pipeline Hacking Integrado
-// DISABLED bot.command('hackflow', async (ctx) => {
-// DISABLED   if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-// DISABLED   const t = throttle(ctx.from.id, '/hackflow');
-// DISABLED   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /hackflow novamente.');
-// DISABLED   
-// DISABLED   const target = ctx.message.text.slice(9).trim();
-// DISABLED   if (!target) return ctx.reply('Uso: /hackflow <dominio> [scenario]\nEx: /hackflow example.com credential_exfiltration');
-// DISABLED   
-// DISABLED   const args = target.split(' ');
-// DISABLED   const domain = args[0];
-// DISABLED   const scenario = args[1] || 'credential_exfiltration';
-// DISABLED   
-// DISABLED   ctx.reply('🔴 *HackFlow iniciado — ' + domain + '*\n⏳ Executando pipeline: recon → scan → osint → attack → analyze...', { parse_mode: 'Markdown' });
-// DISABLED   
-// DISABLED   try {
-// DISABLED     const results = await hackflow.run(domain, scenario);
-// DISABLED     const report = hackflow.formatReport(results);
-// DISABLED     
-// DISABLED     // Enviar relatório em partes se for muito longo
-// DISABLED     if (report.text.length > 4000) {
-// DISABLED       await ctx.reply(report.text.slice(0, 4000));
-// DISABLED       await ctx.reply(report.text.slice(4000));
-// DISABLED     } else {
-// DISABLED       await ctx.reply(report.text);
-// DISABLED     }
-// DISABLED     
-// DISABLED     // HITL: Se risco > 80, perguntar sobre payload educacional
-// DISABLED     if (report.riskScore > 80) {
-// DISABLED       return ctx.reply('🚨 *Risco Crítico Detectado*', {
-// DISABLED         reply_markup: {
-// DISABLED           inline_keyboard: [[
-// DISABLED             { text: '🎯 Gerar Payload Educativo', callback_data: 'hackflow_payload_' + domain.replace(/\./g, '_') },
-// DISABLED             { text: '✅ Finalizar', callback_data: 'hackflow_done_' + domain.replace(/\./g, '_') }
-// DISABLED           ]]
-// DISABLED         }
-// DISABLED       });
-// DISABLED     }
-// DISABLED     
-// DISABLED   } catch(e) {
-// DISABLED     console.error('[hackflow] ERRO:', e.message);
 // DISABLED     return ctx.reply('❌ Erro no pipeline: ' + e.message);
 // DISABLED   }
 // DISABLED });
@@ -2252,7 +2211,6 @@ Responda em português, direto e sem floreios.`;
     return;
   }
   
-  // [REMOVIDO V9.0-SEC] hackflow_payload_ e hackflow_done_ removidos — handlers ofensivos
   
   // V90-NEW-O — Auto-forget callback
   if (data.startsWith('ctx_forget_auto_')) {
