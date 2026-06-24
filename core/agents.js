@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { askLLM } = require('../skills/llm.js');
-const { ask } = require('./llm.js');
+// askLLM legacy removed — Actor usa ask() de core/llm.js com cascade
+const { ask } = require('./llm.js'); // Actor + Critic
 
 const LOG_FILE = path.join(__dirname, '..', 'data', 'critic-rejections.log');
 
@@ -49,7 +49,7 @@ async function run(prompt, options = {}) {
     const { history, persona, maxHistoryTurns } = options;
     
     // Attempt 1
-    let actorResponse = await askLLM(prompt, { history, persona, maxHistoryTurns });
+    let actorResponse = await ask(prompt, { history, persona, maxHistoryTurns });
     
     let criticEvaluation;
     try {
@@ -62,7 +62,7 @@ async function run(prompt, options = {}) {
       logRejection(prompt, actorResponse, criticEvaluation);
       
       // Attempt 2
-      actorResponse = await askLLM(prompt, { history, persona, maxHistoryTurns });
+      actorResponse = await ask(prompt, { history, persona, maxHistoryTurns });
       
       try {
         criticEvaluation = await ask(buildCriticPrompt(prompt, actorResponse));
