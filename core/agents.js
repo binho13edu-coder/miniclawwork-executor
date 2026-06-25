@@ -3,6 +3,48 @@ const path = require('path');
 // askLLM legacy removed — Actor usa ask() de core/llm.js com cascade
 const { ask } = require('./llm.js'); // Actor + Critic
 
+const { randomUUID } = require('crypto');
+const TaskDB = require('better-sqlite3');
+const taskDbPath = require('path').join(__dirname, '..', 'data', 'jobs.db');
+
+function getTaskDb() {
+  return new TaskDB(taskDbPath, { timeout: 5000 });
+}
+
+async function plan(prompt, userId) {
+  const plannerPrompt = `Decompoe a tarefa abaixo em passos atomicos executaveis.
+Responda APENAS JSON valido, sem markdown, sem explicacao:
+{"steps": ["passo 1", "passo 2"], "requires_external": false}
+Se tarefa for simples (1 acao), steps tera 1 elemento.
+Tarefa: "${prompt}"`;
+
+  let planData;
+  try {
+    const raw = await ask(plannerPrompt);
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    planData = JSON.parse(cleaned);
+    if (!Array.isArray(planData.steps) || planData.steps.length === 0) throw new Error('steps invalido');
+  } catch (e) {
+    planData = { steps: [prompt], requires_external: false };
+  }
+
+  const task_id = randomUUID();
+  const is_multistep = planData.steps.length > 1;
+
+  const db = getTaskDb();
+  try {
+    db.prepare(`INSERT INTO tasks (task_id, user_id, plan_json, total_steps, status)
+      VALUES (?, ?, ?, ?, 'pending')`
+    ).run(task_id, String(userId), JSON.stringify(planData.steps), planData.steps.length);
+  } finally {
+    db.close();
+  }
+
+  return { task_id, plan: planData, is_multistep };
+}
+
+
+
 const LOG_FILE = path.join(__dirname, '..', 'data', 'critic-rejections.log');
 
 function logRejection(prompt, response, reason) {
@@ -82,4 +124,4 @@ async function run(prompt, options = {}) {
   }
 }
 
-module.exports = { run };
+module.exports = { run, plan };
