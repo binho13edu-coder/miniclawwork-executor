@@ -138,6 +138,50 @@ async function processLeadsOSINT(bot) { // V90-NEW-N
   }
 }
 
+
+let taskRunning = false;
+async function processPendingTasks(bot) {
+  if (taskRunning) return;
+  taskRunning = true;
+  const dbPath = require('path').join(__dirname, '..', 'data', 'jobs.db');
+  if (!require('fs').existsSync(dbPath)) { taskRunning = false; return; }
+  let db;
+  try {
+    db = new Database(dbPath);
+    const tasks = db.prepare(
+      "SELECT * FROM tasks WHERE status = 'pending' ORDER BY created_at ASC LIMIT 3"
+    ).all();
+    if (!tasks.length) { db.close(); taskRunning = false; return; }
+    const { run } = require('../core/agents');
+    for (const task of tasks) {
+      const plan = JSON.parse(task.plan_json || '[]');
+      const step = plan[task.current_step];
+      if (!step) {
+        db.prepare("UPDATE tasks SET status='done', updated_at=CURRENT_TIMESTAMP WHERE task_id=?").run(task.task_id);
+        continue;
+      }
+      db.prepare("UPDATE tasks SET status='running', updated_at=CURRENT_TIMESTAMP WHERE task_id=?").run(task.task_id);
+      try {
+        const result = await run(step, {});
+        const next = task.current_step + 1;
+        const done = next >= task.total_steps;
+        db.prepare(`UPDATE tasks SET current_step=?, status=?, result=?, updated_at=CURRENT_TIMESTAMP WHERE task_id=?`)
+          .run(next, done ? 'done' : 'pending', result, task.task_id);
+        console.log(`[Watchdog] Task ${task.task_id} step ${next}/${task.total_steps} ${done ? 'DONE' : 'pending'}`);
+      } catch(e) {
+        db.prepare("UPDATE tasks SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE task_id=?").run(e.message, task.task_id);
+        console.error(`[Watchdog] Task ${task.task_id} falhou:`, e.message);
+      }
+    }
+    db.close();
+  } catch(e) {
+    console.error('[Watchdog] processPendingTasks error:', e.message);
+    if (db) try { db.close(); } catch(_) {}
+  } finally {
+    taskRunning = false;
+  }
+}
+
 function start(bot) {
     if (timer) {
         console.warn('[Watchdog] Ja iniciado, ignorando chamada dupla');
@@ -149,6 +193,7 @@ function start(bot) {
         checkFailedJobs(bot);
         metrics.checkDegradation(bot);
         processLeadsOSINT(bot).catch(e => console.error('[Watchdog] OSINT cycle error:', e.message));
+    processPendingTasks(bot).catch(e => console.error('[Watchdog] Tasks cycle error:', e.message));
     }, CHECK_INTERVAL);
     
     console.log(`[Watchdog] Iniciado — intervalo: ${CHECK_INTERVAL}ms, memoria limite: ${MEMORY_LIMIT / 1024 / 1024}MB`);
