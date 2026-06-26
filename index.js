@@ -1,4 +1,12 @@
 require('dotenv').config({ path: '/home/opc/miniclawwork-executor/.env' });
+
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] uncaughtException:', err.message, err.stack);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] unhandledRejection:', reason);
+});
 // Validação defensiva
 const REQUIRED_ENV = ['TELEGRAM_TOKEN','GITHUB_TOKEN','OWNER_ID','OPENROUTER_API_KEY'];
 

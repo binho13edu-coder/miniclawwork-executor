@@ -4,6 +4,7 @@
  * Roda: segunda 7h BRT (cron no ecosystem.config.js)
  */
 
+require('dotenv').config({ path: '/home/opc/miniclawwork-executor/.env' });
 const sqlite3 = require('better-sqlite3');
 const path = require('path');
 const { Telegraf } = require('telegraf');
@@ -61,12 +62,12 @@ async function sendAlert(bot) {
 }
 
 async function main() {
-  if (!process.env.TELEGRAM_BOT_TOKEN || !OWNER_ID) {
-    console.error('[leads-pipeline] TELEGRAM_BOT_TOKEN ou OWNER_ID não configurados');
+  if (!process.env.TELEGRAM_TOKEN || !OWNER_ID) {
+    console.error('[leads-pipeline] TELEGRAM_TOKEN ou OWNER_ID não configurados');
     process.exit(1);
   }
 
-  const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+  const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
   await sendAlert(bot);
   process.exit(0);
 }
