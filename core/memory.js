@@ -276,7 +276,7 @@ class MemoryStore {
 const memory = new MemoryStore();
 
 process.on('SIGINT',  () => { memory.close(); process.exit(0); });
-process.on('SIGTERM', () => { memory.close(); process.exit(0); });
+
 
 
 // V90-02 — recallByPara para filtro P.A.R.A.

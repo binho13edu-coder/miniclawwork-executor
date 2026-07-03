@@ -7,6 +7,9 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   console.error('[FATAL] unhandledRejection:', reason);
 });
+
+process.once('SIGINT', () => { bot && bot.stop('SIGINT'); });
+process.once('SIGTERM', () => { bot && bot.stop('SIGTERM'); });
 // Validação defensiva
 const REQUIRED_ENV = ['TELEGRAM_TOKEN','GITHUB_TOKEN','OWNER_ID','OPENROUTER_API_KEY'];
 
@@ -2016,4 +2019,4 @@ bot.launch({ dropPendingUpdates: true }).then(() => {
   // V80-NEW-C — Relatorio semanal de feedback
   const { scheduleWeeklyReport } = require('./jobs/feedback-report');
   scheduleWeeklyReport(bot);
-});
+}).catch(e => console.error('[FATAL] bot.launch falhou:', e.message, e.stack));
