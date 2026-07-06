@@ -93,7 +93,7 @@ const metrics = require('./core/metrics');
 const agents = require('./core/agents');
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN, { handlerTimeout: 300000 });
-const OWNER_ID = parseInt(process.env.OWNER_ID);
+const OWNER_ID = String(process.env.OWNER_ID).trim();
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
 let state = { leads: [], selectedLead: null, activePersona: null }; // V80-13
@@ -1338,7 +1338,7 @@ bot.on('voice', async (ctx) => {
 });
 
 
-bot.on('text', async (ctx) => {
+bot.on('text', async (ctx, next) => {
   const userId = ctx.from.id.toString();
   const pending = learning.getAwaiting(userId);
   if (!pending) return next();
