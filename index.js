@@ -689,7 +689,7 @@ bot.hears(/\b([0-9a-f]{8})\b/i, async (ctx) => {
 
 // V80-MENU — Menu inline por categoria
 bot.command('menu', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const menuText = `📋 *Menu MiniClawwork*
 
 Escolha uma categoria:`;
@@ -838,7 +838,7 @@ Escolha uma categoria:`;
 
 // V80-24 — Invoice Tracker
 bot.command('invoicetrack', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const tRecon = throttle(ctx.from.id, '/invoicetrack');
   if (tRecon.throttled) return ctx.reply('⏳ Aguarde ' + tRecon.waitSeconds + 's antes de usar /invoicetrack novamente.');
   const args = ctx.message.text.slice(13).trim().split(' ');
@@ -878,7 +878,7 @@ bot.command('invoicetrack', async (ctx) => {
 });
 
 bot.command('metrics', async (ctx) => {
-    if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+    if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
     const averages = metrics.getAverages(7);
     if (!averages.length) return ctx.reply('📊 Sem métricas ainda.');
     let msg = '📊 Latência média (7 dias):\n\n';
@@ -889,7 +889,7 @@ bot.command('metrics', async (ctx) => {
 });
 
 bot.command('cache', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const stats = getCacheStats();
   ctx.reply('📦 Cache LLM\n\n• Entradas: ' + stats.total_entries + '\n• Hits totais: ' + stats.total_hits + '\n• Hit rate: ' + stats.hit_rate);
 });
@@ -897,7 +897,7 @@ bot.command('cache', async (ctx) => {
 
 // V90-02 — /ctx com P.A.R.A.
 bot.command('ctx', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const args = ctx.message.text.slice(5).trim().split(' ');
   const term = args[0];
   const paraFilter = args[1] || null;
@@ -924,7 +924,7 @@ bot.command('ctx', async (ctx) => {
 
 // V90-03 — /ctx_forget
 bot.command('ctx_forget', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const args = ctx.message.text.slice(12).trim().split(' ');
   const action = args[0];
   if (!action) return ctx.reply('Uso: /ctx_forget <ID> | source:<nome> | old | list | confirm');
@@ -996,7 +996,7 @@ bot.command('ctx_forget', async (ctx) => {
 
 // V90-NEW-G — /osint defensivo
 bot.command('osint', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const args = ctx.message.text.slice(7).trim().split(' ');
   const subcmd = args[0];
   const target = args[1];
@@ -1029,7 +1029,7 @@ bot.command('osint', async (ctx) => {
 // [V9.0-SEC] /aiattack removido
 // DISABLED // V90-NEW-A — Trimmer TLDR (compressão de memória)
 bot.command('trimmer', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const t = throttle(ctx.from.id, '/trimmer');
   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /trimmer novamente.');
   
@@ -1056,7 +1056,7 @@ bot.command('trimmer', async (ctx) => {
 
 // V90-NEW-Q — Auto-Healing Chunks
 bot.command('heal', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const t = throttle(ctx.from.id, '/heal');
   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /heal novamente.');
   
@@ -1080,7 +1080,7 @@ bot.command('heal', async (ctx) => {
 
 // V90-NEW-W — /schedule
 bot.command('schedule', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const t = throttle(ctx.from.id, '/schedule');
   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's.');
   
@@ -1117,7 +1117,7 @@ bot.command('schedule', async (ctx) => {
 
 // V90-NEW-Y — /export
 bot.command('export', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const t = throttle(ctx.from.id, '/export');
   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's.');
   
@@ -1138,7 +1138,7 @@ bot.command('export', async (ctx) => {
 
 // V90-NEW-R — /reminder
 bot.command('reminder', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const t = throttle(ctx.from.id, '/reminder');
   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's.');
   
@@ -1168,7 +1168,7 @@ bot.command('reminder', async (ctx) => {
 
 // V90-NEW-VOICE — /falar <texto>
 bot.command('falar', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const t = throttle(ctx.from.id, '/falar');
   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's.');
 
@@ -1189,7 +1189,7 @@ bot.command('falar', async (ctx) => {
 
 // V90-NEW-APRENDER — /aprender
 bot.command('aprender', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const t = throttle(ctx.from.id, '/aprender');
   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's.');
 
@@ -1276,7 +1276,7 @@ bot.command('aprender', async (ctx) => {
 // V90-NEW-STT — Handler de mensagens de voz (voice -> texto -> LLM -> voz)
 // Validacao: max 5 minutos de duracao, max 10MB de arquivo
 bot.on('voice', async (ctx) => {
-  if (ctx.from.id !== OWNER_ID) return;
+  if (String(ctx.from.id) !== OWNER_ID) return;
   const t = throttle(ctx.from.id, '/voice');
   if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's.');
 
@@ -1341,7 +1341,7 @@ bot.on('voice', async (ctx) => {
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id.toString();
   const pending = learning.getAwaiting(userId);
-  if (!pending) return;
+  if (!pending) return next();
   
   if (ctx.message.text.startsWith('/')) {
     learning.clearAwaiting(userId);
@@ -1376,7 +1376,7 @@ bot.on('text', async (ctx) => {
 bot.on('text', async (ctx) => {
     const t = ctx.message.text;
     const tl = t.toLowerCase().trim();
-    if (ctx.from.id !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+    if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
 
   // === Throttle helper (V80-NEW-B) ===
   function _checkThrottle(cmd) {
