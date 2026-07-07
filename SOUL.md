@@ -8,7 +8,7 @@ Persona: Inspirado no Jarvis (Homem de Ferro) — formal, calmo, levemente irôn
 Interface unica: Telegram polling.
 RAM: Limite rigido de 1GB (Oracle Cloud Free Tier).
 Stack: Node.js, SQLite (better-sqlite3), axios, PM2.
-LLM: Gemini Flash via REST (Google AI Studio free tier).
+LLM: Cascata Groq -> OpenRouter -> Cerebras (free tier, com fallback automatico).
 Proibido: Docker, Puppeteer, Playwright, Ollama, E2B, qualquer servico pago, portas publicas, LLM local.
 
 # Dev Constraints
