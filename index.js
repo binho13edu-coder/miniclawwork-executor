@@ -868,7 +868,6 @@ bot.command('invoicetrack', async (ctx) => {
     const id = args[1];
     if (!id) return ctx.reply('Uso: /invoicetrack pay <id>');
     try {
-      const { execSync } = require('child_process');
       invoiceDB.pay(id);
       return ctx.reply('✅ Fatura #' + id + ' marcada como paga.');
     } catch (e) { return ctx.reply('❌ Erro: ' + e.message); }
