@@ -140,6 +140,62 @@ async function processLeadsOSINT(bot) { // V90-NEW-N
 
 
 let taskRunning = false;
+async function checkHitlCandidates(bot) {
+  const dbPath = path.join(__dirname, '..', 'data', 'leads.db');
+  let db;
+  try {
+    db = new Database(dbPath);
+
+    const cols = db.prepare("PRAGMA table_info(leads)").all();
+    if (!cols.some(c => c.name === 'hitl_sent_at')) {
+      db.prepare("ALTER TABLE leads ADD COLUMN hitl_sent_at DATETIME").run();
+    }
+
+    const leads = db.prepare(`
+      SELECT id, nome, empresa, email, telefone, dominio, score FROM leads
+      WHERE score > 80
+      AND hitl_sent_at IS NULL
+      AND (resultado = 'aberto' OR resultado IS NULL)
+      ORDER BY score DESC LIMIT 3
+    `).all();
+
+    if (!leads.length) { db.close(); return; }
+
+    const ownerId = parseInt(process.env.OWNER_ID, 10);
+    if (isNaN(ownerId)) { db.close(); return; }
+
+    for (const lead of leads) {
+      try {
+        await bot.telegram.sendMessage(ownerId,
+          `🎯 *Lead alto potencial* (score ${lead.score})\n\n` +
+          `Nome: ${lead.nome}\n` +
+          `Empresa: ${lead.empresa || 'N/A'}\n` +
+          `Email: ${lead.email || 'N/A'}\n` +
+          `Telefone: ${lead.telefone || 'N/A'}\n` +
+          `Dominio: ${lead.dominio || 'N/A'}`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🚀 Iniciar Prospeccao', callback_data: 'hitl_prospect_' + lead.id },
+                { text: '⏭️ Ignorar', callback_data: 'hitl_ignore_' + lead.id }
+              ]]
+            }
+          }
+        );
+        db.prepare('UPDATE leads SET hitl_sent_at = ? WHERE id = ?').run(new Date().toISOString(), lead.id);
+        console.log(`[Watchdog] HITL alert enviado - lead ${lead.id} (score ${lead.score})`);
+      } catch (e) {
+        console.error('[Watchdog] HITL send error:', e.message);
+      }
+    }
+    db.close();
+  } catch (e) {
+    console.error('[Watchdog] HITL cycle error:', e.message);
+    if (db) db.close();
+  }
+}
+
 async function processPendingTasks(bot) {
   if (taskRunning) return;
   taskRunning = true;
@@ -194,6 +250,7 @@ function start(bot) {
         metrics.checkDegradation(bot);
         processLeadsOSINT(bot).catch(e => console.error('[Watchdog] OSINT cycle error:', e.message));
     processPendingTasks(bot).catch(e => console.error('[Watchdog] Tasks cycle error:', e.message));
+    checkHitlCandidates(bot).catch(e => console.error('[Watchdog] HITL cycle error:', e.message));
     }, CHECK_INTERVAL);
     
     console.log(`[Watchdog] Iniciado — intervalo: ${CHECK_INTERVAL}ms, memoria limite: ${MEMORY_LIMIT / 1024 / 1024}MB`);

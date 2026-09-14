@@ -12,12 +12,12 @@ const Database = require('better-sqlite3');
 const PROVIDERS = {
   groq: {
     name: 'groq', baseURL: 'https://api.groq.com/openai/v1',
-    apiKeyEnv: 'GROQ_API_KEY', models: ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'],
+    apiKeyEnv: 'GROQ_API_KEY', models: ['openai/gpt-oss-120b', 'qwen/qwen3.6-27b'],
     priority: 1, rpmLimit: 30,
   },
   openrouter: {
     name: 'openrouter', baseURL: 'https://openrouter.ai/api/v1',
-    apiKeyEnv: 'OPENROUTER_API_KEY', models: ['mistralai/mistral-7b-instruct', 'deepseek/deepseek-chat'],
+    apiKeyEnv: 'OPENROUTER_API_KEY', models: ['deepseek/deepseek-chat', 'qwen/qwen-2.5-72b-instruct'],
     priority: 2, rpmLimit: 60,
   },
   deepseek: {
@@ -27,7 +27,7 @@ const PROVIDERS = {
   },
   nvidia: {
     name: 'nvidia', baseURL: 'https://integrate.api.nvidia.com/v1',
-    apiKeyEnv: 'NVIDIA_API_KEY', models: ['meta/llama-3.1-8b-instruct'],
+    apiKeyEnv: 'NVIDIA_API_KEY', models: ['nvidia/llama-3.1-nemotron-70b-instruct'],
     priority: 4, rpmLimit: 40,
   },
 };

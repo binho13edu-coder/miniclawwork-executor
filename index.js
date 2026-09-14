@@ -721,13 +721,9 @@ bot.action('menu_leads', async (ctx) => {
 });
 
 bot.action('menu_security', async (ctx) => {
-  await ctx.editMessageText(`🔒 *Seguranca (V80-14)*
+  await ctx.editMessageText(`🔒 *Seguranca*
   
-/recon <dominio> — Reconhecimento de dominio
-/scan <host> — Scan de portas e headers
-/osint <dns|headers|email> <alvo> — OSINT defensivo (V90-NEW-G)
-/payload <tipo> <plataforma> — Payload educacional
-/report <alvo> — Relatorio de seguranca completo`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
+/osint <dns|headers|email> <alvo> — OSINT defensivo (V90-NEW-G)`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
 });
 
 bot.action('menu_system', async (ctx) => {
