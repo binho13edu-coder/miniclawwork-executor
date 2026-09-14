@@ -1420,6 +1420,28 @@ bot.on('text', async (ctx) => {
     if (tl.includes("analise o") && !tl.startsWith('/analise')) {
         const idx = parseInt(tl.match(/\d+/)?.[0] || '1');
         state.selectedLead = state.leads[idx - 1];
+        if (state.selectedLead) {
+            try {
+                const { hashLead, validateEmail, validatePhone } = require('./core/lead-validator');
+                const lead = state.selectedLead;
+                const dominio = (lead.link || '').replace(/^https?:\/\//, '').split('/')[0] || null;
+                const email = validateEmail(lead.email) ? lead.email : null;
+                const telefone = validatePhone(lead.phone) ? lead.phone : null;
+                const scoreConvertido = Math.round((lead.score || 0) * 6.67);
+                const hash = hashLead(lead.title, dominio);
+                const db = new (require('better-sqlite3'))('./data/leads.db');
+                const exists = db.prepare('SELECT id FROM leads WHERE lead_hash = ?').get(hash);
+                if (!exists) {
+                    db.prepare(`INSERT INTO leads (nome, email, dominio, telefone, lead_hash, score, resultado)
+                                VALUES (?, ?, ?, ?, ?, ?, 'aberto')`)
+                      .run(lead.title, email, dominio, telefone, hash, scoreConvertido);
+                    console.log(`[LEAD-PERSIST] Lead salvo: ${lead.title} | score ${scoreConvertido}`);
+                }
+                db.close();
+            } catch (e) {
+                console.error('[LEAD-PERSIST] Erro:', e.message);
+            }
+        }
         return ctx.reply(state.selectedLead ? `Lead [${idx}]: ${state.selectedLead.title}\nEmail: ${state.selectedLead.email}\nFone: ${state.selectedLead.phone}` : "Lead nao encontrado.");
     }
     if (tl === "vale a pena?") {

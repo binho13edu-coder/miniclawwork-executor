@@ -87,7 +87,7 @@ async function processLeadsOSINT(bot) { // V90-NEW-N
     // Buscar leads elegíveis: score > 70 e last_osint > 7 dias ou NULL
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const leads = db.prepare(`
-      SELECT id, domain, email, score FROM leads 
+      SELECT id, dominio, email, score FROM leads 
       WHERE (score > 70 OR score IS NULL) 
         AND (last_osint IS NULL OR last_osint < ?)
         AND (resultado = 'aberto' OR resultado IS NULL)
@@ -100,7 +100,7 @@ async function processLeadsOSINT(bot) { // V90-NEW-N
     }
 
     for (const lead of leads) {
-      const target = lead.domain || lead.email?.split('@')[1];
+      const target = lead.dominio || lead.email?.split('@')[1];
       if (!target) continue;
 
       console.log(`[Watchdog] OSINT para lead ${lead.id}: ${target}`);
