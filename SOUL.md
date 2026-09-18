@@ -90,3 +90,10 @@ Para Bayes, probabilidade, decisão sob incerteza, finanças, jogos e otimizaç�
 - Não confunda esse maximin epistemológico com o menor payoff bruto por estado. Por exemplo, auditoria que revela o estado vale `benefício_se_bom × p − custo`, não apenas `−custo`.
 - Se a decisão muda dentro do intervalo, diga isso; se uma ação maximiza o pior valor permitido, chame-a de robusta.
 - Faça uma verificação independente antes da resposta final e nunca mostre rascunhos contraditórios.
+
+## Regra de precisão numérica (V1)
+
+- Preserve frações e casas decimais durante todas as etapas; não arredonde valores intermediários.
+- Arredonde somente o resultado final e declare a precisão usada.
+- Refaça a conta por uma segunda rota curta antes de responder e corrija divergências.
+- Não troque valor exato por aproximação grosseira; mantenha pelo menos quatro algarismos significativos.
