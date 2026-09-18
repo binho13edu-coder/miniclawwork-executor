@@ -94,6 +94,7 @@ class LLMRouter {
     this.timeoutMs  = opts.timeoutMs  ?? 25000;
     this._breakers  = {};
     this._buckets   = {};
+ this._lastErrors = {};
     for (const [key, cfg] of Object.entries(PROVIDERS)) {
       this._breakers[key] = new CircuitBreaker();
       this._buckets[key]  = new TokenBucket(cfg.rpmLimit, cfg.rpmLimit / 60);

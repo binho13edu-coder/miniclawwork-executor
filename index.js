@@ -1852,9 +1852,11 @@ bot.on('text', async (ctx) => {
         const highRisk = active.filter(item => item.risk === 'high');
         const highWithoutConfirmation = highRisk.filter(item => !item.requiresConfirmation);
         const providerStatus = Object.entries(router.status()).map(([name, info]) => {
-          const state = !info.apiKeySet ? 'OFF' : (info.circuitBreaker.state === 'CLOSED' && info.cooldownMs === 0 ? 'OK' : 'ATENCAO');
-          return name + ': ' + state;
-        }).join(' | ');
+    const state = !info.apiKeySet ? 'OFF' : (info.circuitBreaker.state === 'CLOSED' && info.cooldownMs === 0 ? 'OK' : 'ATENCAO');
+    const cooldown = info.cooldownMs > 0 ? ' cooldown=' + Math.ceil(info.cooldownMs / 1000) + 's' : '';
+    const issue = info.lastError ? ' erro=' + (info.lastError.code || 'provider') : '';
+    return name + ': ' + state + cooldown + issue;
+  }).join(' | ');
         const registryStatus = [
             '',
             '🧭 Registro do Orquestrador',
