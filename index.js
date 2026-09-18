@@ -1852,7 +1852,7 @@ bot.on('text', async (ctx) => {
         const highRisk = active.filter(item => item.risk === 'high');
         const highWithoutConfirmation = highRisk.filter(item => !item.requiresConfirmation);
         const providerStatus = Object.entries(router.status()).map(([name, info]) => {
-          const state = info.circuitBreaker.state === 'CLOSED' && info.apiKeySet && info.cooldownMs === 0 ? 'OK' : 'ATENCAO';
+          const state = !info.apiKeySet ? 'OFF' : (info.circuitBreaker.state === 'CLOSED' && info.cooldownMs === 0 ? 'OK' : 'ATENCAO');
           return name + ': ' + state;
         }).join(' | ');
         const registryStatus = [
