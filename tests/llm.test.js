@@ -104,6 +104,15 @@ describe('Politica de raciocinio V2', () => {
 });
 
 
+describe('Revisao Bayes e auditoria', () => {
+  test('exige produto das evidencias e custo fixo da auditoria', () => {
+    const review = buildIndependentReviewPrompt('Dois sensores + independentes; auditoria custa R$16.');
+    assert.ok(review.includes('P(E|H)=P(e|H)^n'));
+    assert.ok(review.includes('EV(auditar)=−c+p·ganho_favorável'));
+    assert.ok(review.includes('Nunca some likelihoods'));
+  });
+});
+
 describe('Protecao de resposta vazia', () => {
   test('router rejeita HTTP 200 sem content', async () => {
     const previousFetch = global.fetch;

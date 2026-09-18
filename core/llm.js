@@ -341,16 +341,16 @@ function classifyTask(prompt) {
 }
 
 function buildIndependentReviewPrompt(prompt) {
-  return `${prompt}
+  return prompt + `
 
 PROTOCOLO DE REVISÃO INDEPENDENTE:
-Resolva exclusivamente o enunciado acima, do zero. Não houve resposta anterior para confirmar.
-Identifique dados, restrições e objetivo antes do cálculo.
+Resolva exclusivamente o enunciado acima, do zero. Não houve resposta anterior para confirmar. Identifique dados, restrições e objetivo antes do cálculo.
+Para n evidências/sensores condicionalmente independentes com o mesmo resultado, use a verossimilhança conjunta P(E|H)=P(e|H)^n (ou o produto de cada evidência); calcule P(H,E)=P(H)·P(E|H) e normalize Bayes pelo total de todas as hipóteses. Nunca some likelihoods como se já fossem posterior.
+Para uma auditoria de custo fixo c que revela o estado e executa apenas no estado favorável, use EV(auditar)=−c+p·ganho_favorável: o custo ocorre em todos os estados, e o prejuízo da execução no estado desfavorável não ocorre. Não use c·p.
 Em incerteza posterior, calcule o valor esperado de cada ação como função da posterior e compare o mínimo dentro do intervalo permitido; não substitua isso pelo pior payoff bruto por estado.
-Não assuma independência, correlação, dados externos ou premissas não fornecidas.
-Entregue somente a resposta final no formato, limite e idioma exigidos pelo enunciado.`;
+Antes de finalizar, faça uma segunda checagem por probabilidades conjuntas ou fórmula algébrica equivalente. Não assuma independência, correlação, dados externos ou premissas não fornecidas.
+Entregue somente a resposta final no formato, limite e idioma exigidos pelo enunciado; se houver número exato de linhas, emita exatamente esse número.`;
 }
-
 function enforceOutputContract(response, prompt) {
   const match = String(prompt || '').match(/\bexatamente\s+(\d+)\s+linhas?\b/i);
   if (!match || typeof response !== 'string') return response;
