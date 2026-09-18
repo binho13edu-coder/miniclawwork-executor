@@ -182,6 +182,7 @@ class LLMRouter {
           const selectedModel = this._resolveModel(provider, opts.model);
           const result = await this._callProvider(provider, messages, selectedModel, controller.signal, opts.maxTokens || 2048, opts.temperature);
           clearTimeout(timer); breaker.recordSuccess();
+      delete this._lastErrors[provider.name];
           const responseMeta = { content: result, provider: provider.name, model: selectedModel, attempt };
 // V90-NEW-V: registrar provider usado
 try { const metrics = require('./metrics'); metrics.track(`llm_provider:${provider.name}`, attempt); } catch(e) {}
@@ -202,6 +203,7 @@ return responseMeta;
                 const selectedModel = this._resolveModel(provider, opts.model);
                 const result = await this._callProvider(provider, compressed, selectedModel, controller.signal, 512, opts.temperature);
                 clearTimeout(timer); breaker.recordSuccess();
+      delete this._lastErrors[provider.name];
                 return { content: result, provider: provider.name, model: selectedModel, attempt, compressed: true };
               } catch (err2) {
                 clearTimeout(timer);
@@ -228,6 +230,7 @@ return responseMeta;
       rateLimitTokens: Math.floor(this._buckets[name].tokens),
       apiKeySet: !!process.env[PROVIDERS[name].apiKeyEnv],
       cooldownMs: this._isCooling(name) ? 600000 - (Date.now() - this._cooldowns.get(name)) : 0,
+      lastError: this._lastErrors[name] || null,
     }]));
   }
 }
