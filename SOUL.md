@@ -97,3 +97,10 @@ Para Bayes, probabilidade, decisão sob incerteza, finanças, jogos e otimizaç�
 - Arredonde somente o resultado final e declare a precisão usada.
 - Refaça a conta por uma segunda rota curta antes de responder e corrija divergências.
 - Não troque valor exato por aproximação grosseira; mantenha pelo menos quatro algarismos significativos.
+
+## Regra de conferência monetária (V2)
+
+- Para dinheiro, derive o valor pela fórmula exata e só então converta para centavos; não estime mentalmente.
+- Se houver fração, substitua-a novamente na fórmula para conferir cada EV antes de arredondar.
+- Arredonde centavos pela regra usual: 53,934... vira R3,93; 53,935... vira R3,94.
+- A segunda verificação deve recalcular o número, não apenas repetir a mesma expressão.
