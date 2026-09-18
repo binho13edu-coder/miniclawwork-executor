@@ -1434,7 +1434,7 @@ bot.command('osint', async (ctx) => {
 // AI-Driven Attack Simulator
 // [V9.0-SEC] /aiattack removido
 // DISABLED // V90-NEW-A — Trimmer TLDR (compressão de memória)
-bot.command('trimmer', async (ctx) => {
+async function handleTrimmer(ctx) {
   if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const trimmerAction = ctx.message.text.replace('/trimmer', '').trim().toLowerCase();
   const trimmerKey = String(ctx.from.id) + ':trimmer';
@@ -1473,10 +1473,11 @@ bot.command('trimmer', async (ctx) => {
     console.error('[trimmer] ERRO:', e.message);
     return ctx.reply('❌ Erro no trimmer: ' + e.message);
   }
-});
+}
+bot.command('trimmer', handleTrimmer);
 
 // V90-NEW-Q — Auto-Healing Chunks
-bot.command('heal', async (ctx) => {
+async function handleHeal(ctx) {
   if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const healAction = ctx.message.text.replace('/heal', '').trim().toLowerCase();
   const healKey = String(ctx.from.id) + ':heal';
@@ -1512,7 +1513,8 @@ bot.command('heal', async (ctx) => {
     console.error('[heal] ERRO:', e.message);
     return ctx.reply('❌ Erro no healer: ' + e.message);
   }
-});
+}
+bot.command('heal', handleHeal);
 
 // V90-NEW-W — /schedule
 bot.command('schedule', async (ctx) => {
@@ -1813,6 +1815,8 @@ bot.on('text', async (ctx) => {
     const t = ctx.message.text;
     const tl = t.toLowerCase().trim();
     if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  if (tl === '/trimmer' || tl === '/trimmer confirmar') return handleTrimmer(ctx);
+  if (tl === '/heal' || tl === '/heal confirmar') return handleHeal(ctx);
 
   // === Throttle helper (V80-NEW-B) ===
   function _checkThrottle(cmd) {
