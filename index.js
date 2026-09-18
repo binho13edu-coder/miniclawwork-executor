@@ -2513,7 +2513,7 @@ metrics.init();
 initCache();
 
 // V80-MENU — Auto-registro de comandos no BotFather + menu inline
-bot.telegram.setMyCommands([
+const BOT_COMMANDS = [
   { command: 'menu', description: 'Menu principal com todos os comandos' },
   { command: 'fin', description: 'Financeiro: registro de gastos/receitas' },
   { command: 'leads', description: 'Busca leads B2B por termo' },
@@ -2540,8 +2540,22 @@ bot.telegram.setMyCommands([
   { command: 'leadscoring', description: 'Scoring BANT de leads (V80-22)' },
   { command: 'proposalgen', description: 'Gerador de propostas (V80-23)' },
   { command: 'invoicetrack', description: 'Rastreamento de faturas (V80-24)' }
-]).then(() => console.log("[V80-MENU] Comandos registrados no BotFather"))
-  .catch(e => console.error("[V80-MENU] Erro ao registrar comandos:", e.message));
+];
+async function registerBotCommands(commands, attempt = 1) {
+  try {
+    await bot.telegram.setMyCommands(commands);
+    console.log("[V80-MENU] Comandos registrados no BotFather");
+  } catch (e) {
+    if (attempt >= 3) {
+      console.error("[V80-MENU] Registro indisponível após 3 tentativas:", e.message);
+      return;
+    }
+    const delayMs = attempt * 1500;
+    console.warn("[V80-MENU] Falha transitória; nova tentativa em " + delayMs + "ms");
+    setTimeout(() => registerBotCommands(commands, attempt + 1), delayMs);
+  }
+}
+registerBotCommands(BOT_COMMANDS);
 
 // V90-NEW-A — Trimmer TLDR automático a cada 24h
 setInterval(() => {
