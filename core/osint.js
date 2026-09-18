@@ -85,4 +85,75 @@ async function enrichTech(domain) { // V90-NEW-X
   });
 }
 
-module.exports = { checkDNS, checkHeaders, checkHIBP, enrichTech, WARNING };
+
+async function checkDMARC(domain) {
+  try {
+    const records = await dns.resolveTxt('_dmarc.' + domain).catch(() => []);
+    const record = records.flat().find(value =>
+      String(value).toLowerCase().startsWith('v=dmarc1')
+    );
+
+    if (!record) return { found: false, policy: null, record: null };
+
+    const policyMatch = String(record).match(/(?:^|;)\s*p=([^;\s]+)/i);
+    return {
+      found: true,
+      policy: policyMatch ? policyMatch[1].toLowerCase() : 'ausente',
+      record: String(record)
+    };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+async function checkTLS(domain) {
+  const tls = require('tls');
+
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = (result) => {
+      if (finished) return;
+      finished = true;
+      resolve(result);
+    };
+
+    const socket = tls.connect({
+      host: domain,
+      port: 443,
+      servername: domain,
+      rejectUnauthorized: false,
+      timeout: 10000
+    });
+
+    socket.once('secureConnect', () => {
+      const cert = socket.getPeerCertificate();
+      socket.end();
+
+      if (!cert || !cert.valid_to) {
+        return finish({ error: 'Certificado TLS não disponível.' });
+      }
+
+      const validTo = new Date(cert.valid_to);
+      const daysRemaining = Math.floor((validTo.getTime() - Date.now()) / 86400000);
+
+      finish({
+        valid: socket.authorized && !Number.isNaN(validTo.getTime()) && daysRemaining >= 0,
+        authorized: socket.authorized,
+        authorizationError: socket.authorizationError || null,
+        validTo: cert.valid_to,
+        daysRemaining,
+        issuer: cert.issuer?.O || cert.issuer?.CN || 'desconhecido',
+        subject: cert.subject?.CN || domain
+      });
+    });
+
+    socket.once('timeout', () => {
+      socket.destroy();
+      finish({ error: 'Timeout TLS.' });
+    });
+
+    socket.once('error', (error) => finish({ error: error.message }));
+  });
+}
+
+module.exports = { checkDNS, checkHeaders, checkHIBP, enrichTech, checkDMARC, checkTLS, WARNING };

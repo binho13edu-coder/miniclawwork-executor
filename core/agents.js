@@ -87,41 +87,9 @@ Responda EXATAMENTE com uma única palavra:
 }
 
 async function run(prompt, options = {}) {
-  try {
-    const { history, persona, maxHistoryTurns } = options;
-    
-    // Attempt 1
-    let actorResponse = await ask(prompt, { history, persona, maxHistoryTurns });
-    
-    let criticEvaluation;
-    try {
-      criticEvaluation = await ask(buildCriticPrompt(prompt, actorResponse));
-    } catch (e) {
-      criticEvaluation = 'OK'; // Se critic falhar, aprova para não bloquear
-    }
-    
-    if (criticEvaluation.startsWith('REJECT')) {
-      logRejection(prompt, actorResponse, criticEvaluation);
-      
-      // Attempt 2
-      actorResponse = await ask(prompt, { history, persona, maxHistoryTurns });
-      
-      try {
-        criticEvaluation = await ask(buildCriticPrompt(prompt, actorResponse));
-      } catch (e) {
-        criticEvaluation = 'OK';
-      }
-      
-      if (criticEvaluation.startsWith('REJECT')) {
-        logRejection(prompt, actorResponse, criticEvaluation);
-        return "Nao consegui processar agora. Tente em instantes.";
-      }
-    }
-    
-    return actorResponse;
-  } catch (error) {
-    return "Nao consegui processar agora. Tente em instantes.";
-  }
+  // A revisão de raciocínio agora é feita no core/llm com contexto independente.
+  // O antigo crítico verificava apenas identidade e acrescentava falhas/rate-limit.
+  return ask(prompt, options);
 }
 
 module.exports = { run, plan };

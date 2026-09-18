@@ -12,12 +12,12 @@ const Database = require('better-sqlite3');
 const PROVIDERS = {
   groq: {
     name: 'groq', baseURL: 'https://api.groq.com/openai/v1',
-    apiKeyEnv: 'GROQ_API_KEY', models: ['openai/gpt-oss-120b', 'qwen/qwen3.6-27b'],
+    apiKeyEnv: 'GROQ_API_KEY', models: ['openai/gpt-oss-120b', 'groq/compound'],
     priority: 1, rpmLimit: 30,
   },
   openrouter: {
     name: 'openrouter', baseURL: 'https://openrouter.ai/api/v1',
-    apiKeyEnv: 'OPENROUTER_API_KEY', models: ['deepseek/deepseek-chat', 'qwen/qwen-2.5-72b-instruct'],
+    apiKeyEnv: 'OPENROUTER_API_KEY', models: ['meta-llama/llama-3.1-8b-instruct'],
     priority: 2, rpmLimit: 60,
   },
   deepseek: {
@@ -28,7 +28,7 @@ const PROVIDERS = {
   nvidia: {
     name: 'nvidia', baseURL: 'https://integrate.api.nvidia.com/v1',
     apiKeyEnv: 'NVIDIA_API_KEY', models: ['nvidia/llama-3.1-nemotron-70b-instruct'],
-    priority: 4, rpmLimit: 40,
+    priority: 4, rpmLimit: 40, enabled: false,
   },
 };
 
@@ -99,6 +99,12 @@ class LLMRouter {
       this._buckets[key]  = new TokenBucket(cfg.rpmLimit, cfg.rpmLimit / 60);
     }
   }
+  _resolveModel(provider, requestedModel) {
+    return requestedModel && provider.models.includes(requestedModel)
+      ? requestedModel
+      : provider.models[0];
+  }
+
   _isCooling(providerName) { // V90-NEW-K
     if (!this._cooldowns) this._cooldowns = new Map();
     const lastFail = this._cooldowns.get(providerName);
@@ -108,15 +114,18 @@ class LLMRouter {
 
   _availableProviders() {
     return Object.values(PROVIDERS).sort((a, b) => a.priority - b.priority).filter(p => {
+      if (p.enabled === false) return false;
       if (!process.env[p.apiKeyEnv]) return false;
       if (this._breakers[p.name].isOpen()) return false;
       if (this._isCooling(p.name)) return false; // V90-NEW-K
       return true;
     });
   }
-  async _callProvider(provider, messages, model, signal, maxTokens = 2048) {
+  async _callProvider(provider, messages, model, signal, maxTokens = 2048, temperature) {
     const apiKey = process.env[provider.apiKeyEnv];
-    const body   = JSON.stringify({ model: model || provider.models[0], messages, max_tokens: maxTokens, stream: false });
+    const payload = { model: model || provider.models[0], messages, max_tokens: maxTokens, stream: false };
+    if (typeof temperature === 'number') payload.temperature = temperature;
+    const body = JSON.stringify(payload);
     const res    = await fetch(`${provider.baseURL}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
@@ -135,7 +144,15 @@ class LLMRouter {
       throw err;
     }
     const data = await res.json();
-    return data.choices?.[0]?.message?.content ?? '';
+    const content = data.choices?.[0]?.message?.content;
+      if (typeof content !== 'string' || !content.trim()) {
+        const err = new Error(`Resposta vazia: ${provider.name}`);
+        err.code = 'EMPTY_RESPONSE';
+        err.fatal = true;
+        err.finishReason = data.choices?.[0]?.finish_reason;
+        throw err;
+      }
+      return content;
   }
   _compressPrompt(messages) { // V90-NEW-P
     // Truncar system prompt para 500 chars, remover few-shots, manter user
@@ -162,11 +179,12 @@ class LLMRouter {
         const timer = setTimeout(() => controller.abort(), this.timeoutMs);
         try {
           bucket.tryConsume(1);
-          const result = await this._callProvider(provider, messages, opts.model, controller.signal, opts.maxTokens || 2048);
+          const selectedModel = this._resolveModel(provider, opts.model);
+          const result = await this._callProvider(provider, messages, selectedModel, controller.signal, opts.maxTokens || 2048, opts.temperature);
           clearTimeout(timer); breaker.recordSuccess();
-          const responseMeta = { content: result, provider: provider.name, model: opts.model || provider.models[0], attempt };
+          const responseMeta = { content: result, provider: provider.name, model: selectedModel, attempt };
 // V90-NEW-V: registrar provider usado
-try { const metrics = require('./metrics'); metrics.track('llm_provider', { provider: provider.name, model: responseMeta.model, attempt }); } catch(e) {}
+try { const metrics = require('./metrics'); metrics.track(`llm_provider:${provider.name}`, attempt); } catch(e) {}
 return responseMeta;
         } catch (err) {
           clearTimeout(timer);
@@ -181,9 +199,10 @@ return responseMeta;
               const compressed = this._compressPrompt(messages);
               try {
                 bucket.tryConsume(1);
-                const result = await this._callProvider(provider, compressed, opts.model, controller.signal, 512);
+                const selectedModel = this._resolveModel(provider, opts.model);
+                const result = await this._callProvider(provider, compressed, selectedModel, controller.signal, 512, opts.temperature);
                 clearTimeout(timer); breaker.recordSuccess();
-                return { content: result, provider: provider.name, model: opts.model || provider.models[0], attempt, compressed: true };
+                return { content: result, provider: provider.name, model: selectedModel, attempt, compressed: true };
               } catch (err2) {
                 clearTimeout(timer);
                 console.warn(`[LLMRouter] 429 compressao falhou -> cooldown`);
@@ -296,7 +315,82 @@ function getCacheStats() {
 }
 
 function cacheHash(prompt, options) {
-  return crypto.createHash('sha256').update(prompt + JSON.stringify(options)).digest('hex');
+  return crypto.createHash('sha256')
+    .update(prompt + JSON.stringify(options) + getSoulPrompt() + '|reasoning-policy-v2')
+    .digest('hex');
+}
+
+function classifyTask(prompt) {
+  const text = String(prompt || '');
+  const lower = text.toLowerCase();
+  const isolated = /^\s*nova tarefa isolada\b/i.test(text);
+  const strictOutput = /\b(exatamente|em até|no máximo|no maximo)\s+\d+\s+(linhas?|palavras?|itens?)/i.test(text);
+  const reasoningSignals = /\b(bayes|posterior|prior|fréchet|frechet|maximin|minimax|valor esperado|probabilidade|independência|independencia|correlaç|correlac|restriç|restric|otimiza|payoff|decisão robusta|decisao robusta)\b|%|r\$/i;
+  const criticalReasoning = reasoningSignals.test(lower);
+
+  return {
+    isolated,
+    strictOutput,
+    criticalReasoning,
+    temperature: criticalReasoning ? 0.1 : 0.4,
+  };
+}
+
+function buildIndependentReviewPrompt(prompt) {
+  return `${prompt}
+
+PROTOCOLO DE REVISÃO INDEPENDENTE:
+Resolva exclusivamente o enunciado acima, do zero. Não houve resposta anterior para confirmar.
+Identifique dados, restrições e objetivo antes do cálculo.
+Em incerteza posterior, calcule o valor esperado de cada ação como função da posterior e compare o mínimo dentro do intervalo permitido; não substitua isso pelo pior payoff bruto por estado.
+Não assuma independência, correlação, dados externos ou premissas não fornecidas.
+Entregue somente a resposta final no formato, limite e idioma exigidos pelo enunciado.`;
+}
+
+function enforceOutputContract(response, prompt) {
+  const match = String(prompt || '').match(/\bexatamente\s+(\d+)\s+linhas?\b/i);
+  if (!match || typeof response !== 'string') return response;
+
+  const count = Number(match[1]);
+  const promptLines = String(prompt).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const labels = promptLines.filter(line => /^[^:]{1,40}:$/.test(line)).slice(-count);
+  if (count < 1 || labels.length !== count) return response;
+
+  const lines = response.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const lower = value => value.toLowerCase();
+  const starts = labels.map(label => lines.findIndex(line => lower(line).startsWith(lower(label))));
+  if (starts.every(index => index < 0)) return response;
+
+  const question = promptLines.slice(1)
+    .filter(line => !labels.some(label => lower(line) === lower(label)))
+    .join(' ')
+    .trim();
+
+  return labels.map((label, index) => {
+    const startAt = starts[index];
+    const nextAt = starts.slice(index + 1).find(position => position >= 0);
+    let body = '';
+
+    if (startAt < 0) {
+      body = index === 0 ? question : '';
+    } else {
+      body = lines.slice(startAt, nextAt ?? lines.length)
+        .map((line, lineIndex) => {
+          if (lineIndex === 0 && lower(line).startsWith(lower(label))) line = line.slice(label.length);
+          return line.replace(/^[-*•]\s*/, '').replace(/\*\*/g, '').trim();
+        })
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    return body ? `${label} ${body}` : label;
+  }).join('\n');
+}
+
+function requiresMathVerification(prompt) {
+  return classifyTask(prompt).criticalReasoning;
 }
 
 function isCacheable(response) {
@@ -304,55 +398,87 @@ function isCacheable(response) {
     && response.length > 20
     && !response.includes('Nao consegui processar');
 }
-// ==================================
+
+// Few-shots ficam suspensos até existir tabela, curadoria e testes próprios.
+function getFewShots() {
+  return [];
+}
 
 const router = new LLMRouter();
 
-function getFewShots(prompt, limit = 3) { // V90-NEW-L
-  if (!db) return [];
-  try {
-    const words = prompt.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 5);
-    if (!words.length) return [];
-    const like = words.map(() => 'example_input LIKE ?').join(' OR ');
-    const params = words.map(w => '%' + w + '%');
-    const rows = db.prepare(`SELECT example_input, example_output FROM few_shots WHERE (${like}) AND score > 0 ORDER BY score DESC, ts DESC LIMIT ?`).all(...params, limit);
-    return rows;
-  } catch(e) {
-    console.warn('[FEW-SHOT] Erro:', e.message);
-    return [];
-  }
-n}
+function buildBaseMessages(soulPrompt, personaSnippet) {
+  const systemParts = [soulPrompt, personaSnippet].filter(Boolean);
+  return systemParts.length
+    ? [{ role: 'system', content: systemParts.join('\n\n') }]
+    : [];
+}
 
 async function ask(prompt, options = {}) {
   try {
-    if (db) {
+    const profile = classifyTask(prompt);
+
+    // Política v2: não reutiliza cache em tarefas isoladas ou de raciocínio crítico.
+    // Respostas antigas v1 ficam automaticamente invalidadas pela nova hash.
+    const allowCache = false;
+    if (allowCache && db) {
       const hash = cacheHash(prompt, options);
       const cached = db.prepare("SELECT response FROM llm_cache WHERE hash = ?").get(hash);
       if (cached) {
         db.prepare(
           "UPDATE llm_cache SET hits = hits + 1, last_hit = CURRENT_TIMESTAMP WHERE hash = ?"
         ).run(hash);
-        return cached.response;
+        return enforceOutputContract(cached.response, prompt);
       }
     }
 
-    const messages = [];
     const soulPrompt = getSoulPrompt();
-    const personaSnippet = options.persona && PERSONAS[options.persona] ? PERSONAS[options.persona].prompt : ""; // V80-13 + V90-NEW-S
-    // V90-NEW-L: injetar few-shots como prefixo do system prompt
-    const fewShots = getFewShots(prompt, 3);
-    let fewShotText = '';
-    if (fewShots.length) {
-      fewShotText = fewShots.map((fs, i) => 'Exemplo ' + (i+1) + ':\nEntrada: ' + fs.example_input.slice(0,150) + '\nSaida: ' + fs.example_output.slice(0,150)).join('\n\n') + '\n\n';
-    }
-    if (soulPrompt) {
-      messages.push({ role: 'system', content: (personaSnippet ? personaSnippet + "\n\n" : "") + fewShotText + soulPrompt, _fewShot: !!fewShots.length }); // V80-13 + V90-NEW-L
-    }
-    messages.push({ role: 'user', content: prompt });
-    const result = await router.chat(messages, options);
-    const response = result.content;
+    const personaSnippet = typeof options.persona === 'string'
+      ? (PERSONAS[options.persona]?.prompt || options.persona)
+      : '';
 
-    if (db && isCacheable(response)) {
+    const maxHistoryTurns = Math.max(1, options.maxHistoryTurns ?? 3);
+    const history = profile.isolated
+      ? []
+      : (Array.isArray(options.history)
+        ? options.history.slice(-(maxHistoryTurns * 2)).filter(m =>
+            m && ['user', 'assistant'].includes(m.role) && typeof m.content === 'string')
+        : []);
+
+    const requestOptions = {
+      ...options,
+      temperature: typeof options.temperature === 'number'
+        ? options.temperature
+        : profile.temperature,
+      maxTokens: Math.max(options.maxTokens || 0, profile.criticalReasoning ? 4096 : 0),
+    };
+
+    const messages = buildBaseMessages(soulPrompt, personaSnippet);
+    messages.push(...history);
+    if (!history.some(m => m.role === 'user' && m.content === prompt)) {
+      messages.push({ role: 'user', content: prompt });
+    }
+
+    const primary = await router.chat(messages, requestOptions);
+    let response = primary.content;
+    let independentlyReviewed = false;
+
+    if (profile.criticalReasoning) {
+      const reviewMessages = buildBaseMessages(soulPrompt, personaSnippet);
+      reviewMessages.push({ role: 'user', content: buildIndependentReviewPrompt(prompt) });
+
+      try {
+        const reviewed = await router.chat(reviewMessages, requestOptions);
+        response = reviewed.content;
+        independentlyReviewed = true;
+      } catch (reviewError) {
+        console.warn('[LLM REVIEW] indisponivel; entregando resposta primaria:', reviewError.message);
+      }
+    }
+
+    response = enforceOutputContract(response, prompt);
+
+    // Fase 1: cache apenas é permitido para respostas revisadas e não isoladas.
+    if (db && independentlyReviewed && !profile.isolated && isCacheable(response)) {
       const hash = cacheHash(prompt, options);
       db.prepare(`
         INSERT INTO llm_cache (hash, prompt, response)
@@ -366,6 +492,7 @@ async function ask(prompt, options = {}) {
 
     return response;
   } catch (e) {
+    console.error('[ASK ERROR]', e.message, e.breakers || '');
     return "Nao consegui processar agora. Tente em instantes.";
   }
 }
@@ -379,4 +506,8 @@ module.exports = {
   getSoulPrompt,
   initCache,
   getCacheStats,
+  enforceOutputContract,
+  requiresMathVerification,
+  classifyTask,
+  buildIndependentReviewPrompt,
 };

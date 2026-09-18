@@ -42,7 +42,6 @@ const learning    = require('./core/learning'); // V90-NEW-APRENDER
 const tts         = require('./core/tts');      // V90-NEW-VOICE
 const stt         = require('./core/stt');      // V90-NEW-STT
 const { initCache, getCacheStats } = require('./core/llm.js');
-const coreRouter = require('./core/router');
 const { handleFinance, FinanceStore } = require('./core/finance');
 const { buildStatus } = require('./skills/status');
 const { memory } = require('./core/memory');
@@ -97,18 +96,26 @@ const OWNER_ID = String(process.env.OWNER_ID).trim();
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
 let state = { leads: [], selectedLead: null, activePersona: null }; // V80-13
-let conversationHistory = [];
+const { ConversationHistoryStore, isIsolatedTask } = require('./core/conversation-context');
+const conversationStore = new ConversationHistoryStore({ maxMessages: 12 });
+function getConversationKey(ctx) {
+  return String(ctx.chat?.id ?? ctx.from?.id ?? 'unknown');
+}
 
 // V90-NEW-Z4 — Helper para quebrar mensagens longas no Telegram
 async function sendLongReply(ctx, text, opts = {}) {
   const LIMIT = 4000;
-  if (text.length <= LIMIT) {
-    return ctx.reply(text, opts);
+  text = typeof text === 'string' ? text.trim() : '';
+
+  if (!text) {
+    console.error('[TELEGRAM] tentativa de enviar resposta vazia');
+    return ctx.reply('⚠️ O provedor não retornou conteúdo. Tente novamente em instantes.');
   }
+  if (text.length <= LIMIT) return ctx.reply(text, opts);
+
   const chunks = [];
   let i = 0;
   while (i < text.length) {
-    // Quebrar em última quebra de linha antes do limite, se possível
     let end = Math.min(i + LIMIT, text.length);
     if (end < text.length) {
       const lastBreak = text.lastIndexOf('\n', end);
@@ -122,28 +129,6 @@ async function sendLongReply(ctx, text, opts = {}) {
   }
 }
 
-// V90-NEW-Z4 — Helper para quebrar mensagens longas no Telegram
-async function sendLongReply(ctx, text, opts = {}) {
-  const LIMIT = 4000;
-  if (text.length <= LIMIT) {
-    return ctx.reply(text, opts);
-  }
-  const chunks = [];
-  let i = 0;
-  while (i < text.length) {
-    // Quebrar em última quebra de linha antes do limite, se possível
-    let end = Math.min(i + LIMIT, text.length);
-    if (end < text.length) {
-      const lastBreak = text.lastIndexOf('\n', end);
-      if (lastBreak > i) end = lastBreak + 1;
-    }
-    chunks.push(text.slice(i, end));
-    i = end;
-  }
-  for (let j = 0; j < chunks.length; j++) {
-    await ctx.reply(chunks[j], j === 0 ? opts : {});
-  }
-}
 let alertas = [];
 let alertaIdCounter = 1;
 const planState = new Map(); // V80-07
@@ -265,35 +250,16 @@ async function triggerAndWait(ctx, code, statusText, outputPrefix) {
     }
 }
 
-// V90-NEW-S: Mapa comando -> modelo (sobrescreve persona)
-const COMMAND_MODEL_MAP = {
-  '/leads': 'qwen/qwen3-coder',
-  '/osint': 'qwen/qwen3-coder',
-  '/fin': 'llama-3.3-70b-versatile',
-  '/ctx': 'gemma2-9b-it',
-  '/corrigir': 'gemma2-9b-it',
-};
-
-const askLLM = async (t, opts = {}) => {
-  try {
-    const res = await coreRouter.handle(t);
-    if (res) return res;
-  } catch (e) { /* fallback */ }
-  // V90-NEW-S: resolver modelo preferido pela persona OU comando
-  const { PERSONAS } = require('./core/personas');
-  const personaKey = opts.persona || state.activePersona || 'default';
-  const personaCfg = PERSONAS[personaKey] || PERSONAS.default;
-  const commandModel = opts.command ? COMMAND_MODEL_MAP[opts.command] : null;
-  return llmSkill.askLLM(t, {
-    history: conversationHistory,
-    persona: opts.persona || persona,
-    maxHistoryTurns: MAX_HISTORY_TURNS,
-    model: commandModel || personaCfg.preferredModel // V90-NEW-S: comando > persona
-  });
-};
+// Caminho unico: skills/llm e adaptador de core/llm.
+const askLLM = async (t, opts = {}) => llmSkill.askLLM(t, {
+  history: Array.isArray(opts.history) ? opts.history : [],
+  persona: opts.persona || persona,
+  maxHistoryTurns: MAX_HISTORY_TURNS,
+  model: opts.model
+});
 
 const runLeads = (ctx, q) => {
-    conversationHistory = [];
+    conversationStore.clear(getConversationKey(ctx));
     state.selectedLead = null;
     const py = `
 import requests, re, json, urllib.parse, warnings
@@ -723,7 +689,13 @@ bot.action('menu_leads', async (ctx) => {
 bot.action('menu_security', async (ctx) => {
   await ctx.editMessageText(`🔒 *Seguranca*
   
-/osint <dns|headers|email> <alvo> — OSINT defensivo (V90-NEW-G)`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
+/osint avaliar <dominio> — Pré-diagnóstico autorizado
+/osint proposta <dominio> — Escopo comercial
+/osint comparar <dominio> — Antes × depois
+/osint historico <dominio> — Avaliações salvas
+/osint exportar <dominio> — Relatório em Markdown
+/osint catalogo — Serviços disponíveis
+/osint <dns|headers|tech|email> <alvo> — Consulta pontual`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'menu_back' }]] } });
 });
 
 bot.action('menu_system', async (ctx) => {
@@ -995,27 +967,466 @@ bot.command('osint', async (ctx) => {
   const args = ctx.message.text.slice(7).trim().split(' ');
   const subcmd = args[0];
   const target = args[1];
-  if (!subcmd || !target) return ctx.reply('Uso: /osint dns <dominio> | headers <dominio> | email <email>');
+  if (!subcmd || (!target && subcmd !== 'catalogo')) {
+    return ctx.reply('Uso: /osint <dns|headers|tech|email|avaliar|confirmar|proposta|comparar> <alvo> | /osint catalogo');
+  }
   const { checkDNS, checkHeaders, checkHIBP, WARNING } = require('./core/osint');
+
+  const pendingScopes = global.osintPendingScopes || (global.osintPendingScopes = new Map());
+  const scopeKey = String(ctx.from.id) + ':' + sanitizeDomain(target || '');
+
+  if (subcmd === 'exportar') {
+    const domain = sanitizeDomain(target);
+    if (!domain) return ctx.reply('❌ Informe um domínio válido.');
+
+    try {
+      const { getLatestAssessment } = require('./core/osint-assessments');
+      const latest = getLatestAssessment(domain);
+
+      if (!latest) {
+        return ctx.reply('📭 Nenhuma avaliação salva para `' + domain + '`.', {
+          parse_mode: 'Markdown'
+        });
+      }
+
+      const date = new Date(latest.authorized_at);
+      const dateBr = String(date.getUTCDate()).padStart(2, '0') + '/'
+        + String(date.getUTCMonth() + 1).padStart(2, '0') + '/'
+        + date.getUTCFullYear();
+
+      const document = [
+        '# Relatório de Postura Externa',
+        '',
+        '- Ativo: ' + latest.domain,
+        '- Avaliação: #' + latest.id,
+        '- Data da autorização: ' + dateBr,
+        '- Método: observação externa autorizada de baixo impacto',
+        '',
+        '## Resultado',
+        '',
+        latest.report,
+        '',
+        '## Limites',
+        '',
+        'Este relatório não inclui exploração, autenticação, varredura de portas ou alteração do ativo.',
+        'Os achados devem ser validados antes de mudanças em produção.'
+      ].join('\n');
+
+      const filename = 'diagnostico-' + domain.replace(/\./g, '-') + '-avaliacao-' + latest.id + '.md';
+      return ctx.replyWithDocument({
+        source: Buffer.from(document, 'utf8'),
+        filename
+      });
+    } catch (e) {
+      console.error('[OSINT] Erro ao exportar relatório:', e.message);
+      return ctx.reply('❌ Não foi possível exportar o relatório: ' + e.message);
+    }
+  }
+
+  if (subcmd === 'historico') {
+    const domain = sanitizeDomain(target);
+    if (!domain) return ctx.reply('❌ Informe um domínio válido.');
+
+    try {
+      const { getRecentAssessments } = require('./core/osint-assessments');
+      const rows = getRecentAssessments(domain, 10);
+
+      if (!rows.length) {
+        return ctx.reply('📭 Nenhuma avaliação salva para `' + domain + '`.', {
+          parse_mode: 'Markdown'
+        });
+      }
+
+      const formatDate = (iso) => {
+        const date = new Date(new Date(iso).getTime() - 3 * 60 * 60 * 1000);
+        return String(date.getUTCDate()).padStart(2, '0') + '/'
+          + String(date.getUTCMonth() + 1).padStart(2, '0') + '/'
+          + date.getUTCFullYear() + ' '
+          + String(date.getUTCHours()).padStart(2, '0') + ':'
+          + String(date.getUTCMinutes()).padStart(2, '0') + ' BRT';
+      };
+
+      const lines = rows.map(row => {
+        let findings = [];
+        try { findings = JSON.parse(row.findings_json || '[]'); } catch {}
+        return '• Avaliação #' + row.id + ' — ' + formatDate(row.authorized_at)
+          + ' — ' + findings.length + ' achado(s)';
+      });
+
+      return ctx.reply([
+        '🗂️ *Histórico de avaliações*',
+        '',
+        '*Ativo:* `' + domain + '`',
+        'Registros: ' + rows.length,
+        '',
+        ...lines,
+        '',
+        '_Use `/osint comparar ' + domain + '` para comparar as duas mais recentes._'
+      ].join('\n'), { parse_mode: 'Markdown' });
+    } catch (e) {
+      console.error('[OSINT] Erro ao consultar histórico:', e.message);
+      return ctx.reply('❌ Não foi possível consultar o histórico: ' + e.message);
+    }
+  }
+
+  if (subcmd === 'comparar') {
+    const domain = sanitizeDomain(target);
+    if (!domain) return ctx.reply('❌ Informe um domínio válido.');
+
+    try {
+      const { getRecentAssessments } = require('./core/osint-assessments');
+      const rows = getRecentAssessments(domain, 2);
+
+      if (rows.length < 2) {
+        return ctx.reply(
+          '📭 São necessárias duas avaliações autorizadas de `' + domain + '` para comparar.\n'
+          + 'Execute uma nova avaliação após a remediação.',
+          { parse_mode: 'Markdown' }
+        );
+      }
+
+      const [current, previous] = rows;
+      const parse = (value, fallback) => {
+        try { return JSON.parse(value); } catch { return fallback; }
+      };
+      const currentHeaders = parse(current.headers_json, {});
+      const previousHeaders = parse(previous.headers_json, {});
+      const currentDns = parse(current.dns_summary_json, {});
+      const previousDns = parse(previous.dns_summary_json, {});
+      const currentTech = parse(current.tech_json, {});
+      const previousTech = parse(previous.tech_json, {});
+
+      const monitoredHeaders = ['HSTS', 'X-Frame-Options', 'X-Content-Type-Options', 'CSP'];
+      const improved = [];
+      const pending = [];
+      const regressed = [];
+
+      for (const header of monitoredHeaders) {
+        const before = previousHeaders[header] === true;
+        const after = currentHeaders[header] === true;
+        if (!before && after) improved.push('✅ ' + header + ' corrigido');
+        else if (before && !after) regressed.push('🔴 ' + header + ' deixou de estar presente');
+        else if (!after) pending.push('⚠️ ' + header + ' permanece ausente');
+      }
+
+      const previousDmarc = previousDns.dmarc?.policy || null;
+      const currentDmarc = currentDns.dmarc?.policy || null;
+      if (previousDmarc && currentDmarc && previousDmarc !== currentDmarc) {
+        improved.push('✅ DMARC: p=' + previousDmarc + ' → p=' + currentDmarc);
+      }
+
+      const previousTls = previousTech.tls || {};
+      const currentTls = currentTech.tls || {};
+      if (previousTls.valid === false && currentTls.valid === true) {
+        improved.push('✅ Certificado TLS normalizado');
+      } else if (previousTls.valid === true && currentTls.valid === false) {
+        regressed.push('🔴 Certificado TLS deixou de ser válido/confiável');
+      }
+
+      const formatDate = (iso) => {
+        const date = new Date(iso);
+        return String(date.getUTCDate()).padStart(2, '0') + '/'
+          + String(date.getUTCMonth() + 1).padStart(2, '0') + '/'
+          + date.getUTCFullYear();
+      };
+
+      const report = [
+        '📊 *Comparativo pós-remediação*',
+        '',
+        '*Ativo:* `' + domain + '`',
+        'Anterior: avaliação #' + previous.id + ' — ' + formatDate(previous.authorized_at),
+        'Atual: avaliação #' + current.id + ' — ' + formatDate(current.authorized_at),
+        '',
+        '*Melhorias confirmadas*',
+        ...(improved.length ? improved : ['• Nenhuma mudança positiva detectada entre as duas coletas.']),
+        '',
+        '*Pendências atuais*',
+        ...(pending.length ? pending : ['• Nenhuma pendência básica de headers identificada.']),
+        '',
+        '*Regressões*',
+        ...(regressed.length ? regressed : ['• Nenhuma regressão detectada.']),
+        '',
+        '*Postura atual*',
+        'DMARC: ' + (currentDmarc ? 'p=' + currentDmarc : 'não identificado'),
+        'TLS: ' + (currentTls.valid ? '✅ válido/confiável' : '⚠️ requer validação'),
+        '',
+        '_Comparação baseada em observação externa autorizada; valide mudanças em ambiente controlado._'
+      ].join('\n');
+
+      return ctx.reply(report, { parse_mode: 'Markdown' });
+    } catch (e) {
+      console.error('[OSINT] Erro ao comparar avaliações:', e.message);
+      return ctx.reply('❌ Não foi possível comparar as avaliações: ' + e.message);
+    }
+  }
+
+  if (subcmd === 'catalogo') {
+    const { formatCatalog } = require('./core/security-catalog');
+    return ctx.reply(formatCatalog(), { parse_mode: 'Markdown' });
+  }
+
+  if (subcmd === 'proposta') {
+    const domain = sanitizeDomain(target);
+    if (!domain) return ctx.reply('❌ Informe um domínio válido.');
+
+    try {
+      const { getLatestAssessment } = require('./core/osint-assessments');
+      const latest = getLatestAssessment(domain);
+
+      if (!latest) {
+        return ctx.reply(
+          '📭 Não existe avaliação autorizada salva para `' + domain + '`.\n'
+          + 'Execute primeiro `/osint avaliar ' + domain + '`.',
+          { parse_mode: 'Markdown' }
+        );
+      }
+
+      const findings = JSON.parse(latest.findings_json || '[]');
+      const headers = JSON.parse(latest.headers_json || '{}');
+      const dns = JSON.parse(latest.dns_summary_json || '{}');
+      const tech = JSON.parse(latest.tech_json || '{}');
+      const { recommendServices } = require('./core/security-catalog');
+      const recommendedServices = recommendServices({
+        headers,
+        dns,
+        tls: tech.tls || {}
+      });
+
+      const scope = [];
+      if (Object.values(headers).some(present => !present)) {
+        scope.push('• Ajustar headers de segurança HTTP e validar compatibilidade do site.');
+      }
+      if (!dns.spfPresent) {
+        scope.push('• Validar e configurar política SPF para o domínio de e-mail.');
+      }
+      if (!scope.length) {
+        scope.push('• Revisar a configuração atual e executar validação técnica aprofundada.');
+      }
+
+      const serviceLines = recommendedServices
+        .filter(service => service.id !== 'diagnostico-externo')
+        .map(service => '• *' + service.title + '* — ' + service.delivers + ' (' + service.price + ')');
+
+      const report = [
+        '📄 *Pré-proposta de remediação*',
+        '',
+        '*Cliente/ativo:* `' + latest.domain + '`',
+        '*Base técnica:* avaliação externa #' + latest.id + ' em '
+          + (() => {
+            const date = new Date(latest.authorized_at);
+            return String(date.getUTCDate()).padStart(2, '0') + '/'
+              + String(date.getUTCMonth() + 1).padStart(2, '0') + '/'
+              + date.getUTCFullYear();
+          })() + '.',
+        '',
+        '*Escopo sugerido*',
+        ...scope,
+        '',
+        '*Achados que fundamentam o escopo*',
+        ...(findings.length ? findings : ['• Nenhum achado básico persistido; recomenda-se revisão técnica.']),
+        '',
+        '*Serviços recomendados*',
+        ...(serviceLines.length ? serviceLines : ['• Escopo técnico a validar com o cliente.']),
+        '',
+        '*Entregáveis propostos*',
+        '1. Plano de correção priorizado.',
+        '2. Implementação ou orientação técnica das correções aprovadas.',
+        '3. Validação pós-correção.',
+        '4. Relatório executivo com evidências antes/depois.',
+        '',
+        '*Próximo passo comercial*',
+        'Definir responsáveis, ambientes incluídos, janela de mudança e valor da proposta.',
+        '',
+        '_Esta pré-proposta é baseada em observação externa de baixo impacto; não substitui escopo contratual aprovado._'
+      ].join('\n');
+
+      return ctx.reply(report, { parse_mode: 'Markdown' });
+    } catch (e) {
+      console.error('[OSINT] Erro ao gerar pré-proposta:', e.message);
+      return ctx.reply('❌ Não foi possível gerar a pré-proposta: ' + e.message);
+    }
+  }
+
+  if (subcmd === 'avaliar') {
+    const domain = sanitizeDomain(target);
+    if (!domain) return ctx.reply('❌ Informe um domínio válido.');
+    pendingScopes.set(scopeKey, { domain, expiresAt: Date.now() + 10 * 60 * 1000 });
+    return ctx.reply(
+      '⚠️ *Confirmação de escopo*\n\n'
+      + 'Você declara ter autorização para avaliar externamente `' + domain + '`?\n'
+      + 'A análise será de baixo impacto: DNS público, headers HTTPS e tecnologias expostas.\n'
+      + 'Não haverá exploração, login, varredura de portas ou alteração no alvo.\n\n'
+      + 'Confirme com: `/osint confirmar ' + domain + '`',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (subcmd === 'confirmar') {
+    const domain = sanitizeDomain(target);
+    const pending = pendingScopes.get(scopeKey);
+
+    if (!pending || pending.domain !== domain || pending.expiresAt < Date.now()) {
+      pendingScopes.delete(scopeKey);
+      return ctx.reply('❌ Confirmação ausente ou expirada. Comece com `/osint avaliar <dominio>`.');
+    }
+    pendingScopes.delete(scopeKey);
+
+    const { enrichTech } = require('./core/osint');
+    const [dnsData, headerData, techData] = await Promise.all([
+      checkDNS(domain),
+      checkHeaders(domain),
+      enrichTech(domain)
+    ]);
+
+    const { checkDMARC, checkTLS } = require('./core/osint');
+    const [dmarcData, tlsData] = await Promise.all([
+      checkDMARC(domain),
+      checkTLS(domain)
+    ]);
+
+    if (dnsData.error || headerData.error || techData.error || dmarcData.error || tlsData.error) {
+      return ctx.reply(
+        '❌ Não foi possível concluir o pré-diagnóstico: '
+        + [dnsData.error, headerData.error, techData.error].filter(Boolean).join(' | ')
+      );
+    }
+
+    const fixes = [];
+    const headerFixes = {
+      'HSTS': 'Ativar Strict-Transport-Security após validar HTTPS em todos os subdomínios.',
+      'CSP': 'Definir Content-Security-Policy compatível com os recursos legítimos do site.',
+      'X-Frame-Options': 'Definir X-Frame-Options ou frame-ancestors na CSP contra clickjacking.',
+      'X-Content-Type-Options': 'Definir X-Content-Type-Options: nosniff.'
+    };
+
+    for (const [header, correction] of Object.entries(headerFixes)) {
+      if (!headerData.checks[header]) fixes.push('• *Médio* — ' + header + ': ' + correction);
+    }
+
+    const spfPresent = dnsData.txt.some(record =>
+      String(record).toLowerCase().includes('v=spf1')
+    );
+    if (!spfPresent) {
+      fixes.push('• *Médio* — SPF não identificado no TXT raiz: validar e publicar política SPF para o domínio de e-mail.');
+    }
+
+    if (!dmarcData.found) {
+      fixes.push('• *Médio* — DMARC não identificado: validar o domínio de e-mail e publicar política DMARC progressivamente.');
+    } else if (dmarcData.policy === 'none') {
+      fixes.push('• *Baixo* — DMARC em monitoramento (`p=none`): revisar relatórios e evoluir para `quarantine` ou `reject` quando viável.');
+    }
+
+    if (!tlsData.valid) {
+      fixes.push('• *Alto* — Certificado TLS não confiável ou expirado: renovar/corrigir a cadeia antes de qualquer operação sensível.');
+    } else if (tlsData.daysRemaining <= 14) {
+      fixes.push('• *Alto* — Certificado TLS vence em ' + tlsData.daysRemaining + ' dias: renovar com prioridade.');
+    } else if (tlsData.daysRemaining <= 30) {
+      fixes.push('• *Médio* — Certificado TLS vence em ' + tlsData.daysRemaining + ' dias: programar renovação.');
+    }
+
+    const summary = fixes.length
+      ? fixes.join('\n')
+      : '• Nenhuma ausência básica identificada nesta coleta externa. Recomenda-se validação humana antes de concluir conformidade.';
+
+    const report = [
+      '🔐 *Pré-diagnóstico externo de segurança*',
+      '',
+      '*Ativo:* `' + domain + '`',
+      '*Escopo confirmado pelo operador.*',
+      '',
+      '*Postura HTTP observada*',
+      ...Object.entries(headerData.checks)
+        .filter(([name]) => name !== 'X-XSS-Protection')
+        .map(([name, present]) => (present ? '✅ ' : '⚠️ ') + name + (present ? ' presente' : ' ausente')),
+      '',
+      '*DNS público*',
+      'A: ' + (dnsData.a.join(', ') || 'N/A'),
+      'MX: ' + (dnsData.mx.join(', ') || 'N/A'),
+      'SPF: ' + (spfPresent ? 'identificado' : 'não identificado'),
+      'DMARC: ' + (!dmarcData.found ? 'não identificado' : 'p=' + dmarcData.policy),
+      '',
+      '*Certificado TLS*',
+      'Cadeia: ' + (tlsData.authorized ? '✅ confiável' : '⚠️ não confiável'),
+      'Validade: ' + (tlsData.valid ? '✅ válida' : '⚠️ inválida') + ' (' + tlsData.daysRemaining + ' dias restantes)',
+      'Emissor: ' + tlsData.issuer,
+      '',
+      '*Tecnologias publicamente observáveis*',
+      'Servidor: ' + (techData.server || 'desconhecido'),
+      'Indícios: ' + (techData.stack.length ? techData.stack.join(', ') : 'nenhuma assinatura reconhecida'),
+      '',
+      '*Achados e correções sugeridas*',
+      summary,
+      '',
+      '_Limites: observação externa de baixo impacto; não comprova ausência de vulnerabilidades._'
+    ].join('\n');
+
+    console.log('[OSINT] Pre-diagnostico autorizado', {
+      ownerId: String(ctx.from.id),
+      domain,
+      timestamp: new Date().toISOString()
+    });
+    try {
+      const { saveAssessment } = require('./core/osint-assessments');
+      const saved = saveAssessment({
+        ownerId: String(ctx.from.id),
+        domain,
+        authorizedAt: new Date().toISOString(),
+        headers: headerData.checks,
+        dnsSummary: {
+          a: dnsData.a,
+          mx: dnsData.mx,
+          spfPresent,
+          dmarc: {
+            found: dmarcData.found,
+            policy: dmarcData.policy || null
+          }
+        },
+        tech: {
+          server: techData.server,
+          stack: techData.stack,
+          tls: {
+            valid: tlsData.valid,
+            authorized: tlsData.authorized,
+            daysRemaining: tlsData.daysRemaining,
+            issuer: tlsData.issuer
+          }
+        },
+        findings: fixes,
+        report
+      });
+      console.log('[OSINT] Avaliação salva', { id: saved.id, domain });
+    } catch (storageError) {
+      console.error('[OSINT] Falha ao salvar avaliação:', storageError.message);
+    }
+
+    return ctx.reply(report, { parse_mode: 'Markdown' });
+  }
   try {
-    let out = '🔍 *OSINT Defensivo*\\n\\n';
+    let out = '🔍 *OSINT Defensivo*\n\n';
     if (subcmd === 'dns') {
       const data = await checkDNS(sanitizeDomain(target));
       if (data.error) return ctx.reply('❌ ' + data.error);
-      out += '*DNS: ' + target + '*\\nA: ' + (data.a.join(', ') || 'N/A') + '\\nMX: ' + (data.mx.join(', ') || 'N/A') + '\\nTXT: ' + (data.txt.length || 0) + ' registros\\n';
+      out += '*DNS: ' + target + '*\nA: ' + (data.a.join(', ') || 'N/A') + '\nMX: ' + (data.mx.join(', ') || 'N/A') + '\nTXT: ' + (data.txt.length || 0) + ' registros\n';
     } else if (subcmd === 'headers') {
       const data = await checkHeaders(sanitizeDomain(target));
       if (data.error) return ctx.reply('❌ ' + data.error);
-      out += '*Headers: ' + target + '*\\n';
-      Object.entries(data.checks).forEach(([k,v]) => { out += (v ? '✅' : '❌') + ' ' + k + '\\n'; });
+      out += '*Headers: ' + target + '*\n';
+      Object.entries(data.checks).forEach(([k,v]) => { out += (v ? '✅' : '❌') + ' ' + k + '\n'; });
+    } else if (subcmd === 'tech') {
+      const { enrichTech } = require('./core/osint');
+      const data = await enrichTech(sanitizeDomain(target));
+      if (data.error) return ctx.reply('❌ ' + data.error);
+      out += '*Tecnologias publicamente observáveis: ' + target + '*\n'
+        + 'Servidor: ' + (data.server || 'desconhecido') + '\n'
+        + 'Detectadas: ' + (data.stack.length ? data.stack.join(', ') : 'Nenhuma assinatura reconhecida') + '\n';
     } else if (subcmd === 'email') {
       const data = await checkHIBP(sanitizeEmail(target));
       if (data.error) return ctx.reply('❌ ' + data.error);
-      out += '*Email: ' + target + '*\\n' + (data.breached ? '🔴 Vazado em: ' + data.breaches.join(', ') : '🟢 Não encontrado em vazamentos') + '\\n';
+      out += '*Email: ' + target + '*\n' + (data.breached ? '🔴 Vazado em: ' + data.breaches.join(', ') : '🟢 Não encontrado em vazamentos') + '\n';
     } else {
       return ctx.reply('❌ Sub-comando inválido. Use: dns, headers, email');
     }
-    out += '\\n' + WARNING;
+    out += '\n' + WARNING;
     return ctx.reply(out, {parse_mode:'Markdown'});
   } catch(e) { return ctx.reply('❌ Erro: ' + e.message); }
 });
@@ -1025,8 +1436,23 @@ bot.command('osint', async (ctx) => {
 // DISABLED // V90-NEW-A — Trimmer TLDR (compressão de memória)
 bot.command('trimmer', async (ctx) => {
   if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const t = throttle(ctx.from.id, '/trimmer');
-  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /trimmer novamente.');
+  const trimmerAction = ctx.message.text.replace('/trimmer', '').trim().toLowerCase();
+  const trimmerKey = String(ctx.from.id) + ':trimmer';
+  if (!global.maintenancePending) global.maintenancePending = new Map();
+
+  if (trimmerAction !== 'confirmar') {
+    const t = throttle(ctx.from.id, '/trimmer');
+    if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /trimmer novamente.');
+    global.maintenancePending.set(trimmerKey, { expiresAt: Date.now() + 2 * 60 * 1000 });
+    return ctx.reply('⚠️ O trimmer comprime e remove chunks antigos. Confirme em até 2 minutos com `/trimmer confirmar`.', { parse_mode: 'Markdown' });
+  }
+
+  const trimmerPending = global.maintenancePending.get(trimmerKey);
+  if (!trimmerPending || trimmerPending.expiresAt < Date.now()) {
+    global.maintenancePending.delete(trimmerKey);
+    return ctx.reply('❌ Confirmação do trimmer ausente ou expirada.');
+  }
+  global.maintenancePending.delete(trimmerKey);
   
   ctx.reply('🧹 *Trimmer TLDR iniciado*\\n⏳ Analisando chunks e memórias antigas...', { parse_mode: 'Markdown' });
   
@@ -1052,8 +1478,23 @@ bot.command('trimmer', async (ctx) => {
 // V90-NEW-Q — Auto-Healing Chunks
 bot.command('heal', async (ctx) => {
   if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
-  const t = throttle(ctx.from.id, '/heal');
-  if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /heal novamente.');
+  const healAction = ctx.message.text.replace('/heal', '').trim().toLowerCase();
+  const healKey = String(ctx.from.id) + ':heal';
+  if (!global.maintenancePending) global.maintenancePending = new Map();
+
+  if (healAction !== 'confirmar') {
+    const t = throttle(ctx.from.id, '/heal');
+    if (t.throttled) return ctx.reply('⏳ Aguarde ' + t.waitSeconds + 's antes de usar /heal novamente.');
+    global.maintenancePending.set(healKey, { expiresAt: Date.now() + 2 * 60 * 1000 });
+    return ctx.reply('⚠️ O healer remove órfãos/duplicados e arquiva chunks. Confirme em até 2 minutos com `/heal confirmar`.', { parse_mode: 'Markdown' });
+  }
+
+  const healPending = global.maintenancePending.get(healKey);
+  if (!healPending || healPending.expiresAt < Date.now()) {
+    global.maintenancePending.delete(healKey);
+    return ctx.reply('❌ Confirmação do healer ausente ou expirada.');
+  }
+  global.maintenancePending.delete(healKey);
   
   ctx.reply('🔧 *Auto-Healer iniciado*\\n⏳ Verificando chunks órfãos, antigos e duplicados...', { parse_mode: 'Markdown' });
   
@@ -1385,9 +1826,9 @@ bot.on('text', async (ctx) => {
   // ===================================
     let m;
 
-    if (tl.includes("quem") && tl.includes("voc")) { conversationHistory = []; return ctx.reply("Sou o MiniClawwork, agente operacional do Fabio. Funcoes: busca de leads B2B, registro financeiro, monitoramento de cripto e respostas gerais."); }
+    if (tl.includes("quem") && tl.includes("voc")) { conversationStore.clear(getConversationKey(ctx)); return ctx.reply("Sou o MiniClawwork, agente operacional do Fabio. Funcoes: busca de leads B2B, registro financeiro, monitoramento de cripto e respostas gerais."); }
     if (tl === "status") {
-        conversationHistory = [];
+        conversationStore.clear(getConversationKey(ctx));
         return ctx.reply(`Leads: ${state.leads.length}/${MAX_LEADS} | ${state.selectedLead?.title || 'Nenhum'}\nAlertas: ${alertas.length}`);
     }
 
@@ -1400,7 +1841,24 @@ bot.on('text', async (ctx) => {
         if (!tl.startsWith('/fin zerar confirm') && _checkThrottle('/fin')) return;
         return handleFinance(ctx, tl.replace('/fin', '').trim());
     }
-    if (tl === '/status') { if (_checkThrottle('/status')) return; return ctx.reply(buildStatus()); }
+    if (tl === '/status') {
+        if (_checkThrottle('/status')) return;
+        const capabilities = helpManifest.listAll();
+        const active = capabilities.filter(item => item.status === 'active');
+        const highRisk = active.filter(item => item.risk === 'high');
+        const highWithoutConfirmation = highRisk.filter(item => !item.requiresConfirmation);
+        const registryStatus = [
+            '',
+            '🧭 Registro do Orquestrador',
+            'Capacidades ativas: ' + active.length,
+            'Alto risco: ' + highRisk.length,
+            'Alto risco sem confirmação: ' + highWithoutConfirmation.length,
+            highWithoutConfirmation.length
+              ? 'Revisar: ' + highWithoutConfirmation.map(item => '/' + item.name).join(', ')
+              : 'Controles críticos: OK'
+        ].join('\n');
+        return ctx.reply(buildStatus() + registryStatus);
+    }
     if ((m = tl.match(/^\/alerta\s+(\w+)\s*([<>])\s*([\d.,]+)/))) {
         const ativo = m[1].toUpperCase(), op = m[2];
         const val = parseFloat(m[3].replace(/\./g,'').replace(',','.'));
@@ -1603,6 +2061,27 @@ Responda em português, direto e sem floreios.`;
         }
         // V80-11: resposta semantica via LLM
         const results = helpManifest.search(query);
+        const exact = results.find(command =>
+            command.name.toLowerCase() === query ||
+            command.aliases.some(alias => alias.toLowerCase() === query)
+        );
+
+        if (exact) {
+            const lines = [
+                '📖 */' + exact.name + '*',
+                '',
+                exact.description,
+                'Categoria: ' + exact.category
+            ];
+            if (exact.aliases.length) {
+                lines.push('Aliases: ' + exact.aliases.join(', '));
+            }
+            if (exact.examples.length) {
+                lines.push('', '*Exemplos:*', ...exact.examples.map(example => '• `' + example + '`'));
+            }
+            return ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+        }
+
         try {
             let prompt;
             if (results.length) {
@@ -1637,13 +2116,41 @@ Responda em português, direto e sem floreios.`;
             return ctx.reply('Nenhum comando encontrado. Tente /help para ver a lista completa.');
         }
     }
-    if (tl === '/git' || tl.startsWith('/git ')) { if (_checkThrottle('/git')) return;
+    if (tl === '/git' || tl.startsWith('/git ')) {
+        if (tl !== '/git confirmar' && _checkThrottle('/git')) return;
         const guardResult = guard(ctx, '/git');
         if (guardResult.blocked) {
             return ctx.reply(`⛔ ${guardResult.reason === 'shell_injection_detected' ? 'Caracteres perigosos detectados.' : 'Comando inválido.'}`);
         }
         let subcmd = guardResult.sanitized.replace('/git', '').trim();
         if (!subcmd) return ctx.reply('Uso: /git <comando>');
+        if (!global.gitPendingConfirm) global.gitPendingConfirm = new Map();
+        const pendingKey = String(ctx.from.id);
+
+        if (subcmd.toLowerCase() === 'confirmar') {
+            const pending = global.gitPendingConfirm.get(pendingKey);
+            if (!pending || pending.expiresAt < Date.now()) {
+                global.gitPendingConfirm.delete(pendingKey);
+                return ctx.reply('❌ Nenhum comando Git pendente ou confirmação expirada.');
+            }
+            subcmd = pending.subcmd;
+            global.gitPendingConfirm.delete(pendingKey);
+        } else {
+            global.gitPendingConfirm.set(pendingKey, {
+                subcmd,
+                expiresAt: Date.now() + 2 * 60 * 1000
+            });
+            return ctx.reply([
+                '⚠️ Confirmação Git necessária',
+                '',
+                'Comando: git ' + subcmd,
+                'Diretório: /home/opc/miniclawwork-executor',
+                'Expira em: 2 minutos',
+                '',
+                'Execute: /git confirmar'
+            ].join('\n'));
+        }
+
         
         // V80-NEW-F: git output cap
         const subcmdLower = subcmd.toLowerCase();
@@ -1851,9 +2358,9 @@ Retorne no formato exato:
     }
 
     // V90-NEW-O — Auto-sugestão forget se contexto grande
-    if (conversationHistory.length >= 12 && conversationHistory.length % 6 === 0) {
+    if (conversationStore.shouldWarn(getConversationKey(ctx))) {
       try {
-        await ctx.telegram.sendMessage(ctx.chat.id, '🧠 Seu contexto acumulou ' + conversationHistory.length + ' mensagens. Limpar melhora as respostas.', {
+        await ctx.telegram.sendMessage(ctx.chat.id, '🧠 Seu contexto acumulou ' + conversationStore.count(getConversationKey(ctx)) + ' mensagens. Limpar melhora as respostas.', {
           reply_markup: {
             inline_keyboard: [[
               { text: '🧹 Limpar Contexto', callback_data: 'ctx_forget_auto_' + ctx.from.id },
@@ -1866,8 +2373,16 @@ Retorne no formato exato:
       }
     }
 
-    const llmResponse = await agents.run(t, { history: conversationHistory, persona: state.activePersona || persona, maxHistoryTurns: MAX_HISTORY_TURNS });
-    await sendLongReply(ctx, llmResponse); // V90-NEW-Z4 chunking
+    const conversationKey = getConversationKey(ctx);
+      const llmResponse = await agents.run(t, {
+        history: conversationStore.get(conversationKey),
+        persona: state.activePersona || persona,
+        maxHistoryTurns: MAX_HISTORY_TURNS
+      });
+    if (!isIsolatedTask(t) && !llmResponse.startsWith('Nao consegui processar')) {
+        conversationStore.append(conversationKey, t, llmResponse);
+      }
+      await sendLongReply(ctx, llmResponse); // V90-NEW-Z4 chunking
 });
 
 
@@ -1960,7 +2475,7 @@ Responda em português, direto e sem floreios.`;
     if (ctx.from.id.toString() !== targetUserId) {
       return ctx.answerCbQuery('⛔ Não autorizado.');
     }
-    conversationHistory = [];
+    conversationStore.clear(getConversationKey(ctx));
     try {
       const mdb = new (require('better-sqlite3'))('./data/memory.db');
       const count = mdb.prepare('SELECT COUNT(*) as c FROM memories WHERE user_id = ?').get(targetUserId);
@@ -1980,7 +2495,7 @@ Responda em português, direto e sem floreios.`;
       return ctx.answerCbQuery('⛔ Não autorizado.');
     }
     await ctx.answerCbQuery('⏭️ Continuando...');
-    await ctx.editMessageText('⏭️ Contexto mantido. O bot continuará usando o histórico atual (' + conversationHistory.length + ' msgs).');
+    await ctx.editMessageText('⏭️ Contexto mantido. O bot continuará usando o histórico atual (' + conversationStore.count(getConversationKey(ctx)) + ' msgs).');
     return;
   }
   
@@ -2030,8 +2545,16 @@ setInterval(() => {
   trimmer.main().catch(e => console.error('[TRIMMER] Erro:', e.message));
 }, 24 * 60 * 60 * 1000);
 
-bot.launch({ dropPendingUpdates: true }).then(() => {
-  console.log("MiniClawwork v3.9 online");
+bot.catch((err, ctx) => {
+  console.error('[TELEGRAM] handler failure:', err.message, {
+    updateType: ctx?.updateType,
+    chatId: ctx?.chat?.id
+  });
+});
+
+console.log('[TELEGRAM] iniciando polling');
+bot.launch({ dropPendingUpdates: false }).then(() => {
+  console.log("MiniClawwork v3.9 online (polling ativo)");
   require('./jobs/watchdog').start(bot);
   // V80-NEW-C — Relatorio semanal de feedback
   const { scheduleWeeklyReport } = require('./jobs/feedback-report');
