@@ -41,7 +41,7 @@ const scheduler   = require('./jobs/scheduler'); // V90-NEW-W Schedule
 const learning    = require('./core/learning'); // V90-NEW-APRENDER
 const tts         = require('./core/tts');      // V90-NEW-VOICE
 const stt         = require('./core/stt');      // V90-NEW-STT
-const { initCache, getCacheStats } = require('./core/llm.js');
+const { initCache, getCacheStats, router } = require('./core/llm.js');
 const { handleFinance, FinanceStore } = require('./core/finance');
 const { buildStatus } = require('./skills/status');
 const { memory } = require('./core/memory');
@@ -1851,6 +1851,10 @@ bot.on('text', async (ctx) => {
         const active = capabilities.filter(item => item.status === 'active');
         const highRisk = active.filter(item => item.risk === 'high');
         const highWithoutConfirmation = highRisk.filter(item => !item.requiresConfirmation);
+        const providerStatus = Object.entries(router.status()).map(([name, info]) => {
+          const state = info.circuitBreaker.state === 'CLOSED' && info.apiKeySet && info.cooldownMs === 0 ? 'OK' : 'ATENCAO';
+          return name + ': ' + state;
+        }).join(' | ');
         const registryStatus = [
             '',
             '🧭 Registro do Orquestrador',
@@ -1861,7 +1865,7 @@ bot.on('text', async (ctx) => {
               ? 'Revisar: ' + highWithoutConfirmation.map(item => '/' + item.name).join(', ')
               : 'Controles críticos: OK'
         ].join('\n');
-        return ctx.reply(buildStatus() + registryStatus);
+        return ctx.reply(buildStatus() + registryStatus + '\n🧠 Providers LLM: ' + providerStatus);
     }
     if ((m = tl.match(/^\/alerta\s+(\w+)\s*([<>])\s*([\d.,]+)/))) {
         const ativo = m[1].toUpperCase(), op = m[2];
