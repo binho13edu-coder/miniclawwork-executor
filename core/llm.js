@@ -358,7 +358,8 @@ function enforceOutputContract(response, prompt) {
   const count = Number(match[1]);
   const promptLines = String(prompt).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const labels = promptLines.filter(line => /^[^:]{1,40}:$/.test(line)).slice(-count);
-  if (count < 1 || labels.length !== count) return response;
+  if (count < 1 || labels.length < 2) return response;
+  while (labels.length < count) labels.push('Observação:');
 
   const lines = response.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const lower = value => value.toLowerCase();
