@@ -363,6 +363,8 @@ function enforceOutputContract(response, prompt) {
 
   const lines = response.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const lower = value => value.toLowerCase();
+  const firstLabel = lines.findIndex(line => labels.some(label => lower(line).startsWith(lower(label))));
+  if (firstLabel > 0) lines.splice(0, firstLabel);
   const starts = labels.map(label => lines.findIndex(line => lower(line).startsWith(lower(label))));
   if (starts.every(index => index < 0)) return response;
 
