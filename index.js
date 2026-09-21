@@ -98,6 +98,17 @@ const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 let state = { leads: [], selectedLead: null, activePersona: null }; // V80-13
 const { ConversationHistoryStore, isIsolatedTask } = require('./core/conversation-context');
 const conversationStore = new ConversationHistoryStore({ maxMessages: 12 });
+function sanitizeIsolatedPrompt(text) {
+  const source = String(text || '');
+  const marker = 'NOVA TAREFA ISOLADA';
+  const start = source.lastIndexOf(marker);
+  if (start < 0) return source;
+  let clean = source.slice(start);
+  const botQuote = clean.indexOf('Miniclawwork_bot');
+  if (botQuote > 0) clean = clean.slice(0, botQuote);
+  return clean.trim();
+}
+
 function getConversationKey(ctx) {
   return String(ctx.chat?.id ?? ctx.from?.id ?? 'unknown');
 }
@@ -2386,7 +2397,8 @@ Retorne no formato exato:
     const conversationKey = getConversationKey(ctx);
     const isolatedTask = isIsolatedTask(t);
     if (isolatedTask) conversationStore.clear(conversationKey);
-      const llmResponse = await agents.run(t, {
+      const taskText = isolatedTask ? sanitizeIsolatedPrompt(t) : t;
+    const llmResponse = await agents.run(taskText, {
         history: isolatedTask ? [] : conversationStore.get(conversationKey),
         persona: state.activePersona || persona,
         maxHistoryTurns: MAX_HISTORY_TURNS
