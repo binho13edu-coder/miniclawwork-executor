@@ -112,6 +112,11 @@ function sanitizeIsolatedPrompt(text) {
 function getConversationKey(ctx) {
   return String(ctx.chat?.id ?? ctx.from?.id ?? 'unknown');
 }
+function sanitizeIsolatedResponse(text) {
+  const source = String(text || '');
+  const marker = source.indexOf('Posteriores:');
+  return marker > 0 ? source.slice(marker).trim() : source.trim();
+}
 
 // V90-NEW-Z4 — Helper para quebrar mensagens longas no Telegram
 async function sendLongReply(ctx, text, opts = {}) {
@@ -2406,7 +2411,7 @@ Retorne no formato exato:
     if (!isIsolatedTask(t) && !llmResponse.startsWith('Nao consegui processar')) {
         conversationStore.append(conversationKey, t, llmResponse);
       }
-      await sendLongReply(ctx, llmResponse); // V90-NEW-Z4 chunking
+      await sendLongReply(ctx, isolatedTask ? sanitizeIsolatedResponse(llmResponse) : llmResponse); // V90-NEW-Z4 chunking
 });
 
 
