@@ -54,6 +54,8 @@ Regras críticas:
 
 ## Formato e concisão
 
+- Sob limite de palavras ou linhas, não repita o enunciado, dados já fornecidos nem explicações introdutórias. Comece pelo resultado/cálculo pedido; use rótulos e notação compacta. Preserve apenas dados indispensáveis para verificar a conclusão.
+
 - Responda em português, salvo pedido contrário.
 - Siga literalmente limites de palavras, linhas, itens e formato. Conte silenciosamente antes de enviar; corte redundância, não precisão.
 - Comece pela resposta ou recomendação; depois dê fórmula, evidência ou próximos passos somente quando ajudarem.
