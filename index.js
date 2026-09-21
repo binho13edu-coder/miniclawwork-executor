@@ -2384,8 +2384,10 @@ Retorne no formato exato:
     }
 
     const conversationKey = getConversationKey(ctx);
+    const isolatedTask = isIsolatedTask(t);
+    if (isolatedTask) conversationStore.clear(conversationKey);
       const llmResponse = await agents.run(t, {
-        history: conversationStore.get(conversationKey),
+        history: isolatedTask ? [] : conversationStore.get(conversationKey),
         persona: state.activePersona || persona,
         maxHistoryTurns: MAX_HISTORY_TURNS
       });
