@@ -345,8 +345,8 @@ function buildIndependentReviewPrompt(prompt) {
 
 PROTOCOLO DE REVISÃO INDEPENDENTE:
 Resolva exclusivamente o enunciado acima, do zero. Não houve resposta anterior para confirmar. Identifique dados, restrições e objetivo antes do cálculo.
-Para n evidências/sensores condicionalmente independentes com o mesmo resultado, use a verossimilhança conjunta P(E|H)=P(e|H)^n (ou o produto de cada evidência); calcule P(H,E)=P(H)·P(E|H) e normalize Bayes pelo total de todas as hipóteses. Nunca some likelihoods como se já fossem posterior.
-Para uma auditoria de custo fixo c que revela o estado e executa apenas no estado favorável, use EV(auditar)=−c+p·ganho_favorável: o custo ocorre em todos os estados, e o prejuízo da execução no estado desfavorável não ocorre. Não use c·p.
+Para n evidências/sensores condicionalmente independentes, calcule para CADA hipótese o peso conjunto w(H)=P(H)×P(e1|H)×...×P(en|H), depois normalize P(H|e1...en)=w(H)/Σw(H). Nunca multiplique P(e1)×P(e2) como se fossem independentes marginalmente e nunca use likelihood isolada como posterior. Nunca some likelihoods como se já fossem posterior.
+Para diagnóstico de custo fixo c com resultados d, calcule P(d)=Σ_H P(H)P(d|H), atualize cada posterior por Bayes, escolha a melhor ação em cada d e use EV(diagnóstico)=Σ_d P(d)·maxEV(ação|d)−c. O custo ocorre sempre; não use c·p nem subtraia custo duas vezes.
 Em incerteza posterior, calcule o valor esperado de cada ação como função da posterior e compare o mínimo dentro do intervalo permitido; não substitua isso pelo pior payoff bruto por estado.
 Antes de finalizar, faça uma segunda checagem explícita: mostre na resposta uma fórmula ou substituição numérica independente e seu resultado; nunca escreva apenas 'confere' ou 'verificação confirma'. Não assuma independência, correlação, dados externos ou premissas não fornecidas.
 Entregue somente a resposta final no formato, limite e idioma exigidos pelo enunciado; se houver número exato de linhas, emita exatamente esse número.`;

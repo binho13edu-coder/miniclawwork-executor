@@ -107,8 +107,8 @@ describe('Politica de raciocinio V2', () => {
 describe('Revisao Bayes e auditoria', () => {
   test('exige produto das evidencias e custo fixo da auditoria', () => {
     const review = buildIndependentReviewPrompt('Dois sensores + independentes; auditoria custa R$16.');
-    assert.ok(review.includes('P(E|H)=P(e|H)^n'));
-    assert.ok(review.includes('EV(auditar)=−c+p·ganho_favorável'));
+    assert.ok(review.includes('w(H)=P(H)×P(e1|H)'));
+    assert.ok(review.includes('EV(diagnóstico)=Σ_d P(d)'));
     assert.ok(review.includes('Nunca some likelihoods'));
   });
 });
