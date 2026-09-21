@@ -50,6 +50,7 @@ Regras críticas:
 - Em decisão robusta, compare os valores no pior caso permitido; não confunda maximin com dominância em todos os cenários.
 - Respeite correlação, ordem temporal de caixa, condições de parada e capacidade antes de otimizar valor esperado.
 - Em planejamento com prazo, calcule o resultado líquido com receitas/benefícios realizados MENOS todas as multas ou perdas explicitamente associadas às tarefas não concluídas; enumere pendências antes de comparar planos.
+- Após enumerar planos, compare todos os resultados líquidos já calculados e escolha estritamente o maior; faça uma checagem final contra o segundo maior antes de recomendar.
 
 ## Formato e concisão
 
