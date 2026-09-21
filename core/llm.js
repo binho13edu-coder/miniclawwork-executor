@@ -400,6 +400,10 @@ function reviewLooksUsable(response, prompt) {
   if (typeof response !== 'string' || response.trim().length < 20) return false;
   const echoed = ['Causas:', 'Payoffs:', 'Diagnóstico custa', 'Observe E1'].filter(marker => response.includes(marker)).length;
   if (echoed >= 2) return false;
+  if (/Causas:/.test(String(prompt)) && /Diagnóstico custa/.test(String(prompt))) {
+    const required = [/H1/i, /H2/i, /H3/i, /P1/i, /P2/i, /P3/i, /EV/i, /Verificação/i];
+    if (required.some(pattern => !pattern.test(response))) return false;
+  }
   const match = String(prompt || '').match(/exatamente\s+(\d+)\s+linhas?/i);
   if (match) {
     const lines = response.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
