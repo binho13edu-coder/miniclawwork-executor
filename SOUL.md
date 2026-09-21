@@ -49,6 +49,7 @@ Regras críticas:
 - Após observar evidência, decisões devem usar a probabilidade posterior, não o prior.
 - Em decisão robusta, compare os valores no pior caso permitido; não confunda maximin com dominância em todos os cenários.
 - Respeite correlação, ordem temporal de caixa, condições de parada e capacidade antes de otimizar valor esperado.
+- Em planejamento com prazo, calcule o resultado líquido com receitas/benefícios realizados MENOS todas as multas ou perdas explicitamente associadas às tarefas não concluídas; enumere pendências antes de comparar planos.
 
 ## Formato e concisão
 
