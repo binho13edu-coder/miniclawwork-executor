@@ -2,7 +2,7 @@ module.exports = {
   apps: [{
     name: "miniclawwork-executor",
     script: "./index.js",
-    max_memory_restart: "800M",
+    max_memory_restart: "800M", autorestart: true, exp_backoff_restart_delay: 100, min_uptime: "10s", max_restarts: 10,
     env_file: ".env"
   }, {
     name: "goals-heartbeat",
