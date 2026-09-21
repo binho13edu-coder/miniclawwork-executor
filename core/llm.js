@@ -348,7 +348,7 @@ Resolva exclusivamente o enunciado acima, do zero. Não houve resposta anterior 
 Para n evidências/sensores condicionalmente independentes com o mesmo resultado, use a verossimilhança conjunta P(E|H)=P(e|H)^n (ou o produto de cada evidência); calcule P(H,E)=P(H)·P(E|H) e normalize Bayes pelo total de todas as hipóteses. Nunca some likelihoods como se já fossem posterior.
 Para uma auditoria de custo fixo c que revela o estado e executa apenas no estado favorável, use EV(auditar)=−c+p·ganho_favorável: o custo ocorre em todos os estados, e o prejuízo da execução no estado desfavorável não ocorre. Não use c·p.
 Em incerteza posterior, calcule o valor esperado de cada ação como função da posterior e compare o mínimo dentro do intervalo permitido; não substitua isso pelo pior payoff bruto por estado.
-Antes de finalizar, faça uma segunda checagem por probabilidades conjuntas ou fórmula algébrica equivalente. Não assuma independência, correlação, dados externos ou premissas não fornecidas.
+Antes de finalizar, faça uma segunda checagem explícita: mostre na resposta uma fórmula ou substituição numérica independente e seu resultado; nunca escreva apenas 'confere' ou 'verificação confirma'. Não assuma independência, correlação, dados externos ou premissas não fornecidas.
 Entregue somente a resposta final no formato, limite e idioma exigidos pelo enunciado; se houver número exato de linhas, emita exatamente esse número.`;
 }
 function enforceOutputContract(response, prompt) {
