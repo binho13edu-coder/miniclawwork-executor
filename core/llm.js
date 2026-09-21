@@ -393,6 +393,17 @@ function enforceOutputContract(response, prompt) {
   }).join('\n');
 }
 
+function reviewLooksUsable(response, prompt) {
+  if (typeof response !== 'string' || response.trim().length < 20) return false;
+  const echoed = ['Causas:', 'Payoffs:', 'Diagnóstico custa', 'Observe E1'].filter(marker => response.includes(marker)).length;
+  if (echoed >= 2) return false;
+  const match = String(prompt || '').match(/exatamente\s+(\d+)\s+linhas?/i);
+  if (match) {
+    const lines = response.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (lines.length > Number(match[1]) + 2) return false;
+  }
+  return true;
+}
 function requiresMathVerification(prompt) {
   return classifyTask(prompt).criticalReasoning;
 }
@@ -472,8 +483,12 @@ async function ask(prompt, options = {}) {
 
       try {
         const reviewed = await router.chat(reviewMessages, requestOptions);
-        response = reviewed.content;
-        independentlyReviewed = true;
+        if (reviewLooksUsable(reviewed.content, prompt)) {
+          response = reviewed.content;
+          independentlyReviewed = true;
+        } else {
+          console.warn('[LLM REVIEW] resposta rejeitada por eco ou contrato; mantendo resposta primaria');
+        }
       } catch (reviewError) {
         console.warn('[LLM REVIEW] indisponivel; entregando resposta primaria:', reviewError.message);
       }
