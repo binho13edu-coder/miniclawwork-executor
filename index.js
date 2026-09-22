@@ -43,6 +43,7 @@ const tts         = require('./core/tts');      // V90-NEW-VOICE
 const stt         = require('./core/stt');      // V90-NEW-STT
 const { initCache, getCacheStats, router } = require('./core/llm.js');
 const { handleFinance, FinanceStore } = require('./core/finance');
+const { chooseBestPlan } = require('./core/decision-verifier');
 const { buildStatus } = require('./skills/status');
 const { memory } = require('./core/memory');
 const { ingestDocument } = require('./core/intake.js');
@@ -2315,7 +2316,23 @@ Responda em português, direto e sem floreios.`;
         }
     }
 
-    if (tl === '/plan' || tl.startsWith('/plan ')) { if (_checkThrottle('/plan')) return;
+    if (tl === '/plan calc' || tl.startsWith('/plan calc ')) {
+  if (_checkThrottle('/plan')) return;
+  const raw = tl.slice('/plan calc'.length).trim();
+  const fields = raw.split('|').map(v => v.trim()).filter(Boolean);
+  const capacity = Number(fields.shift());
+  const tasks = fields.map(spec => {
+    const [id, hours, reward, penalty, today] = spec.split(',').map(v => v.trim());
+    return { id, hours: Number(hours), reward: Number(reward), penalty: Number(penalty), deadlineToday: today !== '0' };
+  });
+  if (!Number.isFinite(capacity) || capacity <= 0 || !tasks.length || tasks.some(t => !t.id || !Number.isFinite(t.hours) || !Number.isFinite(t.reward) || !Number.isFinite(t.penalty) || t.hours < 0)) {
+    return ctx.reply('Uso: /plan calc capacidade|id,horas,receita,multa,hoje(1/0)|...');
+  }
+  const best = chooseBestPlan(tasks, capacity);
+  const chosen = best.selected.length ? best.selected.join(', ') : 'nenhuma';
+  return ctx.reply(['📐 Plano determinístico', 'Escolhidas: ' + chosen, 'Horas: ' + best.hours + '/' + capacity, 'Receita: R$' + best.reward.toFixed(2), 'Pendências: R$' + best.penalties.toFixed(2), 'Líquido: R$' + best.net.toFixed(2)].join('\n'));
+}
+  if (tl === '/plan' || tl.startsWith('/plan ')) { if (_checkThrottle('/plan')) return;
         const objective = tl.replace('/plan', '').trim();
         if (!objective) return ctx.reply('Uso: /plan <objetivo>\nExemplo: /plan prospectar clínicas odontológicas');
         
