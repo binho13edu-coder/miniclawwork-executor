@@ -70,6 +70,8 @@ function getHelpText(cmdName) {
     return text.trim();
 }
 
+register({ name: 'health', description: 'Verifica dependências, auditoria npm, LLM e processo', category: 'Sistema', examples: ['/health'], risk: 'low' });
+
 module.exports = {
     register,
     search,
