@@ -45,6 +45,7 @@ const { initCache, getCacheStats, router } = require('./core/llm.js');
 const { handleFinance, FinanceStore } = require('./core/finance');
 const { chooseBestPlan } = require('./core/decision-verifier');
 const { buildStatus } = require('./skills/status');
+const { runHealthCheck } = require('./core/health');
 const { memory } = require('./core/memory');
 const { ingestDocument } = require('./core/intake.js');
 const { execSync } = require('child_process');
@@ -979,6 +980,28 @@ bot.command('ctx_forget', async (ctx) => {
 });
 
 // V90-NEW-G — /osint defensivo
+bot.command('health', async (ctx) => {
+  if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
+  try {
+    const report = await runHealthCheck({
+      root: process.cwd(),
+      llmCheck: () => llmSkill.askLLM('Responda somente: OK', { history: [], maxTokens: 16 }),
+    });
+    const v = report.audit.vulnerabilities;
+    const auditText = v ? `npm audit: ${v.total} vulnerabilidade(s)` : 'npm audit: indisponível';
+    const text = [
+      report.ok ? '✅ HEALTH OK' : '⚠️ HEALTH REVISAR',
+      `Processo: PID ${report.pid}, uptime ${report.uptimeSeconds}s`,
+      `Dependências: ${report.checks.dependencies && report.checks.lockfile ? 'OK' : 'FALHA'}`,
+      auditText,
+      `LLM: ${report.llm.available && report.llm.response === 'OK' ? 'OK' : 'FALHA'}`,
+    ].join('\n');
+    return ctx.reply(text);
+  } catch (error) {
+    return ctx.reply('❌ Health check falhou: ' + error.message);
+  }
+});
+
 bot.command('osint', async (ctx) => {
   if (String(ctx.from.id) !== OWNER_ID) return ctx.reply('⛔ Acesso negado.');
   const args = ctx.message.text.slice(7).trim().split(' ');
