@@ -33,3 +33,5 @@ data/*.db
 data/**/*.db
 data/critic-rejections.log
 data/*.log
+
+node_modules/
