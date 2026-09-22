@@ -398,6 +398,12 @@ function enforceOutputContract(response, prompt) {
 
 function reviewLooksUsable(response, prompt) {
   if (typeof response !== 'string' || response.trim().length < 20) return false;
+  const wordLimit = String(prompt || '').match(/\b(?:em até|em ate|no máximo|no maximo)\s+(\d+)\s+palavras?\b/i);
+  if (wordLimit) {
+    const words = response.trim().split(/\s+/).filter(Boolean);
+    if (words.length > Number(wordLimit[1])) return false;
+  }
+
   const echoed = ['Causas:', 'Payoffs:', 'Diagnóstico custa', 'Observe E1'].filter(marker => response.includes(marker)).length;
   if (echoed >= 2) return false;
   if (/Causas:/.test(String(prompt)) && /Diagnóstico custa/.test(String(prompt))) {
@@ -536,4 +542,5 @@ module.exports = {
   requiresMathVerification,
   classifyTask,
   buildIndependentReviewPrompt,
+  reviewLooksUsable,
 };

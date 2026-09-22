@@ -5,7 +5,7 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
-const { LLMRouter, CircuitBreaker, TokenBucket, enforceOutputContract, requiresMathVerification, classifyTask, buildIndependentReviewPrompt } = require('../core/llm');
+const { LLMRouter, CircuitBreaker, TokenBucket, enforceOutputContract, requiresMathVerification, classifyTask, buildIndependentReviewPrompt, reviewLooksUsable } = require('../core/llm');
 
 describe('CircuitBreaker', () => {
   test('inicia fechado', () => {
@@ -130,5 +130,13 @@ describe('Protecao de resposta vazia', () => {
     } finally {
       global.fetch = previousFetch;
     }
+  });
+});
+
+describe('Contrato de palavras', () => {
+  test('rejeita revisão acima do limite e aceita dentro do limite', () => {
+    const prompt = 'Em até 5 palavras: responda objetivamente.';
+    assert.strictEqual(reviewLooksUsable('um dois três quatro cinco', prompt), true);
+    assert.strictEqual(reviewLooksUsable('um dois três quatro cinco seis', prompt), false);
   });
 });
