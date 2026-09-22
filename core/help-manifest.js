@@ -86,7 +86,7 @@ module.exports = {
 register({ name: 'trimmer', description: 'Comprime chunks antigos de baixa importancia via LLM', category: 'Sistema', examples: ['/trimmer'], risk: 'high', requiresConfirmation: true });
 register({ name: 'heal', description: 'Auto-healing: remove chunks orfaos, duplicados e arquiva antigos', category: 'Sistema', examples: ['/heal'], risk: 'high', requiresConfirmation: true });
 register({ name: 'ctx', description: 'Gerencia contexto e knowledge base', category: 'Sistema', examples: ['/ctx forget', '/ctx buscar leads', '/ctx recente'] });
-register({ name: 'plan', description: 'Gera plano de acao estrategico via LLM', category: 'Produtividade', examples: ['/plan aumentar vendas B2B'], risk: 'medium' });
+register({ name: 'plan', description: 'Gera plano de acao estrategico via LLM', category: 'Produtividade', examples: ['/plan aumentar vendas B2B', '/plan calc 5|A,2,300,300,1|B,3,500,500,1'], risk: 'medium' });
 register({ name: 'leads', description: 'Busca leads B2B por termo', category: 'Negocios', examples: ['/leads software', '/leads status'], risk: 'medium' });
 register({ name: 'fin', description: 'Registra gastos e receitas', category: 'Financeiro', examples: ['/fin almoco 45.50', '/fin salario -5000'], risk: 'medium' });
 register({ name: 'status', description: 'Status do sistema e recursos', category: 'Sistema', examples: ['/status'] });
