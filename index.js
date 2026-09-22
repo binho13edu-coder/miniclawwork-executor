@@ -28,7 +28,6 @@ console.log('Env OK | OWNER_ID:', process.env.OWNER_ID);
 
 const { Telegraf } = require('telegraf');
 const { Octokit } = require('@octokit/rest');
-const AdmZip = require('adm-zip');
 const axios = require('axios');
 const fs = require('fs');
 const cryptoSkill = require('./skills/crypto');
